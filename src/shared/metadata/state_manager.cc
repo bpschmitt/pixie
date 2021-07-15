@@ -33,10 +33,10 @@ namespace md {
 constexpr uint64_t kEpochsBetweenObjectDeletion = 100;
 
 /**
- * kMaxObjectRetentionAfterDeathNS is the time in nanoseconds that the object is retained after
+ * kMinObjectRetentionAfterDeathNS is the time in nanoseconds that the object is retained after
  * being deleted.
  */
-constexpr uint64_t kMaxObjectRetentionAfterDeathNS = 24ULL * 3600ULL * 1'000'000'000ULL;
+constexpr uint64_t kMinObjectRetentionAfterDeathNS = 24ULL * 3600ULL * 1'000'000'000ULL;
 
 std::shared_ptr<const AgentMetadataState>
 AgentMetadataStateManagerImpl::CurrentAgentMetadataState() {
@@ -107,15 +107,15 @@ Status AgentMetadataStateManagerImpl::PerformMetadataStateUpdate() {
     }
   }
 
+  if (epoch_id % kEpochsBetweenObjectDeletion == 0) {
+    PL_RETURN_IF_ERROR(
+        DeleteMetadataForDeadObjects(shadow_state.get(), kMinObjectRetentionAfterDeathNS));
+  }
+
   // Increment epoch and update ts.
   ++epoch_id;
   shadow_state->set_epoch_id(epoch_id);
   shadow_state->set_last_update_ts_ns(ts);
-
-  if (epoch_id > 0 && epoch_id % kEpochsBetweenObjectDeletion == 0) {
-    PL_RETURN_IF_ERROR(
-        DeleteMetadataForDeadObjects(shadow_state.get(), kMaxObjectRetentionAfterDeathNS));
-  }
 
   {
     absl::base_internal::SpinLockHolder lock(&agent_metadata_state_lock_);
@@ -159,6 +159,64 @@ Status ApplyK8sUpdates(
   return Status::OK();
 }
 
+namespace {
+
+StatusOr<UPID> InitUPID(const system::ProcParser& proc_parser, uint32_t asid, uint32_t pid) {
+  PL_ASSIGN_OR_RETURN(int64_t pid_start_time, proc_parser.GetPIDStartTimeTicks(pid));
+  return UPID(asid, pid, pid_start_time);
+}
+
+}  // namespace
+
+void ProcessContainerPIDUpdates(
+    CIDView cid, int64_t ts, const system::ProcParser& proc_parser, AgentMetadataState* md,
+    absl::flat_hash_set<UPID>* upids, absl::flat_hash_set<uint32_t>* cgroups_pids,
+    moodycamel::BlockingConcurrentQueue<std::unique_ptr<PIDStatusEvent>>* pid_updates) {
+  // Iterate through old list of UPIDs, looking for PIDs which have been deleted.
+  auto upids_iter = upids->begin();
+  while (upids_iter != upids->end()) {
+    const auto& prev_upid = *upids_iter;
+
+    auto cgroups_pids_iter = cgroups_pids->find(prev_upid.pid());
+    if (cgroups_pids_iter == cgroups_pids->end()) {
+      // Deleted PID.
+      md->MarkUPIDAsStopped(prev_upid, ts);
+
+      // Push deletion events to the queue.
+      pid_updates->enqueue(std::make_unique<PIDTerminatedEvent>(prev_upid, ts));
+
+      upids->erase(upids_iter++);
+      continue;
+    }
+
+    // We are already tracking this PID.
+    // Consume it so cgroups_pids contains only new PIDs at the end of this loop.
+    cgroups_pids->erase(cgroups_pids_iter);
+    ++upids_iter;
+  }
+
+  // Any PIDs left-over in groups_pids are new.
+  // Create UPIDs for them.
+  for (const auto& pid : *cgroups_pids) {
+    StatusOr<UPID> upid_status = InitUPID(proc_parser, md->asid(), pid);
+    if (!upid_status.ok()) {
+      LOG(WARNING) << absl::Substitute("Could not convert PID to UPID: $0", pid);
+      continue;
+    }
+
+    UPID upid = upid_status.ValueOrDie();
+    upids->emplace(upid);
+
+    std::string cmdline = proc_parser.GetPIDCmdline(upid.pid());
+    auto pid_info = std::make_unique<PIDInfo>(upid, std::move(cmdline), CID(cid));
+
+    // Push creation events to the queue.
+    pid_updates->enqueue(std::make_unique<PIDStartedEvent>(*pid_info));
+
+    md->AddUPID(upid, std::move(pid_info));
+  }
+}
+
 Status ProcessPIDUpdates(
     int64_t ts, const system::ProcParser& proc_parser, AgentMetadataState* md,
     CGroupMetadataReader* md_reader,
@@ -176,11 +234,9 @@ Status ProcessPIDUpdates(
 
     // For every container:
     //   1. Read the current PIDs (from cgroups).
-    //   2. Get the list of current PIDs (for metadata).
-    //   3. For each in metadata collect a list of deactivated PIDs. Delete active PIDs from cgroup
-    //   version.
-    //   4. For each new PID create metadata object and attach to container.
-    //   5. For each old pid deactivate it and set time of death.
+    //   2. Get the list of current PIDs (from metadata).
+    //   3. For each new PID create metadata object and attach to container.
+    //   4. For each old PID deactivate it and set time of death.
 
     const UID& pod_id = cinfo->pod_id();
     if (pod_id.empty()) {
@@ -203,8 +259,8 @@ Status ProcessPIDUpdates(
     if (!s.ok()) {
       // Container probably died, we will eventually get a message from MDS and everything in that
       // container will be marked dead.
-      VLOG(1) << absl::Substitute("Failed to read PID info for pod=$0, cid=$1 [msg=$2]", pod_id,
-                                  cid, s.msg());
+      LOG(WARNING) << absl::Substitute("Failed to read PID info for pod=$0, cid=$1 [msg=$2]",
+                                       pod_id, cid, s.msg());
 
       // Don't wait for MDS to send the container death information; set the stop time right away.
       // This is so we stop trying to read stats for this non-existent container.
@@ -215,59 +271,20 @@ Status ProcessPIDUpdates(
         for (const auto& upid : cinfo->active_upids()) {
           md->MarkUPIDAsStopped(upid, ts);
         }
-        cinfo->DeactivateAllUPIDs();
+        cinfo->mutable_active_upids()->clear();
       }
       continue;
     }
-    absl::flat_hash_set<UPID> cgroups_active_upids;
-    // We convert all the cgroup_active_pids to the UPIDs so that we can easily convert and check.
-    for (uint32_t pid : cgroups_active_pids) {
-      StatusOr<int64_t> pid_start_time = proc_parser.GetPIDStartTimeTicks(pid);
-      if (!pid_start_time.ok()) {
-        LOG(WARNING) << absl::Substitute("Could not determine start time of PID $0", pid);
-        continue;
-      }
-      cgroups_active_upids.emplace(md->asid(), pid, pid_start_time.ValueOrDie());
-    }
 
-    std::vector<UPID> upids_to_deactivate;
-    for (const auto& upid : cinfo->active_upids()) {
-      auto it = cgroups_active_upids.find(upid);
-      if (it != cgroups_active_upids.end()) {
-        // Both have the pid so we just need to delete it from the other set.
-        cgroups_active_upids.erase(it);
-      } else {
-        // It does not exist in the new set, but does in the old. Which means that the PID has died.
-        // We mark the time of death as current and mark the PID as inactive.
-        upids_to_deactivate.emplace_back(upid);
-        md->MarkUPIDAsStopped(upid, ts);
-
-        // Push deletion events to the queue.
-        auto pid_status_event = std::make_unique<PIDTerminatedEvent>(upid, ts);
-        pid_updates->enqueue(std::move(pid_status_event));
-      }
-    }
-    for (const auto& upid : upids_to_deactivate) {
-      cinfo->DeactivateUPID(upid);
-    }
-    // The pids left over in the cgroups upids are new processes.
-    for (const auto& upid : cgroups_active_upids) {
-      auto pid_info = std::make_unique<PIDInfo>(upid, proc_parser.GetPIDCmdline(upid.pid()), cid);
-      cinfo->AddUPID(upid);
-      // Push creation events to the queue.
-      auto pid_status_event = std::make_unique<PIDStartedEvent>(*pid_info);
-      pid_updates->enqueue(std::move(pid_status_event));
-
-      md->AddUPID(upid, std::move(pid_info));
-    }
+    ProcessContainerPIDUpdates(cid, ts, proc_parser, md, cinfo->mutable_active_upids(),
+                               &cgroups_active_pids, pid_updates);
   }
 
   return Status::OK();
 }
 
-Status DeleteMetadataForDeadObjects(AgentMetadataState*, int64_t ttl) {
-  // TODO(zasgar/michellenguyen, PP-2583): We should clean up any expired metadata.
-  PL_UNUSED(ttl);
+Status DeleteMetadataForDeadObjects(AgentMetadataState* state, int64_t retention_time) {
+  PL_RETURN_IF_ERROR(state->k8s_metadata_state()->CleanupExpiredMetadata(retention_time));
   return Status::OK();
 }
 

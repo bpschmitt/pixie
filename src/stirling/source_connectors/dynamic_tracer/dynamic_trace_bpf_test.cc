@@ -97,8 +97,8 @@ class GoHTTPDynamicTraceTest : public ::testing::Test {
     constexpr int kTableNum = 0;
     std::unique_ptr<StandaloneContext> ctx = std::make_unique<StandaloneContext>();
     std::unique_ptr<DataTable> data_table =
-        std::make_unique<DataTable>(connector_->TableSchema(kTableNum));
-    connector_->TransferData(ctx.get(), kTableNum, data_table.get());
+        std::make_unique<DataTable>(/*id*/ 0, connector_->table_schemas()[kTableNum]);
+    connector_->TransferData(ctx.get(), {data_table.get()});
     return data_table->ConsumeRecords();
   }
 
@@ -237,8 +237,8 @@ class CPPDynamicTraceTest : public ::testing::Test {
     constexpr int kTableNum = 0;
     std::unique_ptr<StandaloneContext> ctx = std::make_unique<StandaloneContext>();
     std::unique_ptr<DataTable> data_table =
-        std::make_unique<DataTable>(connector_->TableSchema(kTableNum));
-    connector_->TransferData(ctx.get(), kTableNum, data_table.get());
+        std::make_unique<DataTable>(/*id*/ 0, connector_->table_schemas()[kTableNum]);
+    connector_->TransferData(ctx.get(), {data_table.get()});
     return data_table->ConsumeRecords();
   }
 

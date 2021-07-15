@@ -23,8 +23,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "src/carnot/planner/compiler/optimizer/filter_push_down.h"
-#include "src/carnot/planner/compiler/optimizer/merge_nodes.h"
+#include "src/carnot/planner/compiler/optimizer/merge_nodes_rule.h"
+#include "src/carnot/planner/compiler/optimizer/prune_unconnected_operators_rule.h"
+#include "src/carnot/planner/compiler/optimizer/prune_unused_columns_rule.h"
 #include "src/carnot/planner/compiler_state/compiler_state.h"
 #include "src/carnot/planner/compiler_state/registry_info.h"
 #include "src/carnot/planner/ir/ir_nodes.h"
@@ -51,12 +52,6 @@ class Optimizer : public RuleExecutor<IR> {
     prune_ops_batch->AddRule<PruneUnconnectedOperatorsRule>();
   }
 
-  void CreateFilterPushdownBatch() {
-    // Use TryUntilMax here to avoid swapping the positions of "equal" filters endlessly.
-    RuleBatch* filter_pushdown_batch = CreateRuleBatch<TryUntilMax>("FilterPushdown", 1);
-    filter_pushdown_batch->AddRule<FilterPushdownRule>();
-  }
-
   void CreateMergeNodesBatch() {
     RuleBatch* merge_nodes_batch = CreateRuleBatch<TryUntilMax>("MergeNodes", 1);
     merge_nodes_batch->AddRule<MergeNodesRule>(compiler_state_);
@@ -69,7 +64,6 @@ class Optimizer : public RuleExecutor<IR> {
 
   Status Init() {
     CreatePruneUnconnectedOpsBatch();
-    CreateFilterPushdownBatch();
     CreateMergeNodesBatch();
     CreatePruneUnusedColumnsBatch();
     return Status::OK();

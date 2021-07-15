@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <signal.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -101,7 +103,7 @@ class Stirling : public NotCopyable {
    * Registers debug handlers on USR1/USR2.
    * Will clobber any existing handlers, so make sure no other handlers on these signals exist.
    */
-  virtual void RegisterUserDebugSignalHandlers() = 0;
+  virtual void RegisterUserDebugSignalHandlers(int signum = SIGUSR2) = 0;
 
   /**
    * Registers probes defined inside a tracing program.
@@ -129,16 +131,6 @@ class Stirling : public NotCopyable {
    *
    */
   virtual void GetPublishProto(stirlingpb::Publish* publish_pb) = 0;
-
-  /**
-   * Get the Subscription object. Receive a Subscribe proto message from the agent.
-   * Update the schemas based on the subscription message. Generate the appropriate tables
-   * that conform to subscription information.
-   *
-   * @param subscribe_proto
-   * @return Status
-   */
-  virtual Status SetSubscription(const stirlingpb::Subscribe& subscribe_proto) = 0;
 
   /**
    * Register call-back from Agent. Used to periodically send data.

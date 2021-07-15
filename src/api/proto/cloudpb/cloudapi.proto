@@ -28,6 +28,18 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 import "src/api/proto/uuidpb/uuid.proto";
 import "src/api/proto/vispb/vis.proto";
+import "src/api/proto/vizierconfigpb/vizier_types.proto"; 
+
+// service UserService enables users to update/retrieve user information.
+service UserService {
+  rpc GetOrg(px.uuidpb.UUID) returns (OrgInfo);
+  rpc GetUser(px.uuidpb.UUID) returns (UserInfo);
+  rpc GetUserSettings(GetUserSettingsRequest) returns (GetUserSettingsResponse);
+  rpc UpdateUserSettings(UpdateUserSettingsRequest) returns (UpdateUserSettingsResponse);
+  rpc GetUserAttributes(GetUserAttributesRequest) returns (GetUserAttributesResponse);
+  rpc SetUserAttributes(SetUserAttributesRequest) returns (SetUserAttributesResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UserInfo);
+}
 
 //
 // * NOTICE: EXTERNAL
@@ -40,7 +52,65 @@ import "src/api/proto/vispb/vis.proto";
 service OrganizationService {
   // Create an Invite Link that a new user can follow to create a password for their account.
   rpc InviteUser(InviteUserRequest) returns (InviteUserResponse);
+  rpc GetOrg(px.uuidpb.UUID) returns (OrgInfo);
+  rpc UpdateOrg(UpdateOrgRequest) returns (OrgInfo);
+  rpc GetUsersInOrg(GetUsersInOrgRequest) returns (GetUsersInOrgResponse);
 }
+
+message UpdateUserRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  google.protobuf.StringValue display_picture = 2;
+  google.protobuf.BoolValue is_approved = 3;
+}
+
+// A request to update the user settings for a particular user.
+message UpdateUserSettingsRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  reserved 2; // DEPRECATED
+  google.protobuf.BoolValue analytics_optout = 3;
+}
+
+// UpdateUserSettingsResponse is the response to an UpdateUserSettingsRequest.
+message UpdateUserSettingsResponse {
+}
+
+// A request to get the user settings for a particular user.
+message GetUserSettingsRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  reserved 2; // DEPRECATED
+}
+
+// The response for a UserSettingsRequest.
+message GetUserSettingsResponse {
+  // Settings for users key-value. 
+  reserved 1; // DEPRECATED
+  bool analytics_optout = 2; 
+}
+
+// A request to get user attributes for the given user.
+message GetUserAttributesRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+}
+
+// The response for a GetUserAttributes call.
+message GetUserAttributesResponse {
+  bool tour_seen = 1;
+}
+
+// A request to set user attributes for the given user.
+message SetUserAttributesRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  google.protobuf.BoolValue tour_seen = 2;
+}
+
+// The response for a SetUserAttributes call.
+message SetUserAttributesResponse {}
+
 
 message InviteUserRequest {
 	string email = 1;
@@ -631,4 +701,62 @@ message OrgInfo {
   px.uuidpb.UUID id = 1 [ (gogoproto.customname) = "ID" ];
   // The name of the organization.
   string org_name = 2;
+  // The last part of their email.
+  string domain_name = 3;
+  // Whether this org requires admin approval to authorize new users.
+  bool enable_approvals = 4;
+}
+
+message UpdateOrgRequest {
+  // The ID of the org.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  // Whether to enable/disable the requirement for admins to approve new users.
+  google.protobuf.BoolValue enable_approvals = 2;
+}
+
+// A request to get all users in the given org. This org must match the user's org,
+// verified in the augmented token.
+message GetUsersInOrgRequest {
+  // The org to get the users of.
+  px.uuidpb.UUID org_id = 1 [(gogoproto.customname) = "OrgID"];
+}
+
+// The response to a GetUsersInOrgRequest.
+message GetUsersInOrgResponse {
+  // The users in the requested org.
+  repeated UserInfo users = 1;
+}
+
+// UserInfo has information about a single end user in our system.
+message UserInfo {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  // The ID of the organization that they belong to.
+  px.uuidpb.UUID org_id = 2 [(gogoproto.customname) = "OrgID"];
+  string username = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string email = 6;
+  string profile_picture = 7;
+  bool is_approved = 8;
+}
+
+// ConfigService provides configuration specs from the Cloud.
+service ConfigService {
+  //  GetConfigForVizier provides yaml names and content that can be used to deploy Vizier
+  rpc GetConfigForVizier(ConfigForVizierRequest) returns (ConfigForVizierResponse);
+}
+
+// ConfigForVizierRequest is a request for Vizier yamls given a set of specs.
+message ConfigForVizierRequest {
+  // Namespace of the Vizier.
+  string namespace = 1; 
+  // Specs that describe how the Vizier should be configured. 
+  vizierconfigpb.VizierSpec vz_spec = 2; 
+}
+
+// ConfigForVizierResponse is the response to a ConfigForVizierRequest.
+message ConfigForVizierResponse {
+  // A map from YAML name to content, containing yamls which can be used to deploy Vizier.
+  map<string, string> nameToYamlContent = 1;
 }

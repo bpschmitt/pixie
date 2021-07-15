@@ -27,39 +27,44 @@
 namespace px {
 namespace md {
 
-const PodInfo* K8sMetadataState::PodInfoByID(UIDView pod_id) const {
-  auto it = k8s_objects_.find(pod_id);
+const K8sMetadataObject* K8sMetadataState::K8sMetadataObjectByID(UIDView id,
+                                                                 K8sObjectType type) const {
+  auto it = k8s_objects_by_id_.find(id);
 
-  if (it == k8s_objects_.end()) {
+  if (it == k8s_objects_by_id_.end()) {
     return nullptr;
   }
 
-  return (it->second->type() != K8sObjectType::kPod) ? nullptr
-                                                     : static_cast<PodInfo*>(it->second.get());
+  if (it->second->type() != type) {
+    return nullptr;
+  }
+
+  return it->second.get();
+}
+
+const PodInfo* K8sMetadataState::PodInfoByID(UIDView pod_id) const {
+  auto type = K8sObjectType::kPod;
+  return static_cast<const PodInfo*>(K8sMetadataObjectByID(pod_id, type));
 }
 
 const ServiceInfo* K8sMetadataState::ServiceInfoByID(UIDView service_id) const {
-  auto it = k8s_objects_.find(service_id);
-
-  if (it == k8s_objects_.end()) {
-    return nullptr;
-  }
-
-  return (it->second->type() != K8sObjectType::kService)
-             ? nullptr
-             : static_cast<ServiceInfo*>(it->second.get());
+  auto type = K8sObjectType::kService;
+  return static_cast<const ServiceInfo*>(K8sMetadataObjectByID(service_id, type));
 }
 
 const NamespaceInfo* K8sMetadataState::NamespaceInfoByID(UIDView ns_id) const {
-  auto it = k8s_objects_.find(ns_id);
+  auto type = K8sObjectType::kNamespace;
+  return static_cast<const NamespaceInfo*>(K8sMetadataObjectByID(ns_id, type));
+}
 
-  if (it == k8s_objects_.end()) {
+const ContainerInfo* K8sMetadataState::ContainerInfoByID(CIDView id) const {
+  auto it = containers_by_id_.find(id);
+
+  if (it == containers_by_id_.end()) {
     return nullptr;
   }
 
-  return (it->second->type() != K8sObjectType::kNamespace)
-             ? nullptr
-             : static_cast<NamespaceInfo*>(it->second.get());
+  return it->second.get();
 }
 
 UID K8sMetadataState::PodIDByName(K8sNameIdentView pod_name) const {
@@ -87,30 +92,15 @@ UID K8sMetadataState::NamespaceIDByName(K8sNameIdentView namespace_name) const {
   return (it == namespaces_by_name_.end()) ? "" : it->second;
 }
 
-const ContainerInfo* K8sMetadataState::ContainerInfoByID(CIDView id) const {
-  auto it = containers_by_id_.find(id);
-  return it == containers_by_id_.end() ? nullptr : it->second.get();
-}
-
 std::unique_ptr<K8sMetadataState> K8sMetadataState::Clone() const {
   auto other = std::make_unique<K8sMetadataState>();
 
   other->pod_cidrs_ = pod_cidrs_;
   other->service_cidr_ = service_cidr_;
 
-  other->k8s_objects_.reserve(k8s_objects_.size());
-  for (const auto& [k, v] : k8s_objects_) {
-    other->k8s_objects_[k] = v->Clone();
-  }
-
-  other->pods_by_name_.reserve(pods_by_name_.size());
-  for (const auto& [k, v] : pods_by_name_) {
-    other->pods_by_name_[k] = v;
-  }
-
-  other->pods_by_ip_.reserve(pods_by_ip_.size());
-  for (const auto& [k, v] : pods_by_ip_) {
-    other->pods_by_ip_[k] = v;
+  other->k8s_objects_by_id_.reserve(k8s_objects_by_id_.size());
+  for (const auto& [k, v] : k8s_objects_by_id_) {
+    other->k8s_objects_by_id_[k] = v->Clone();
   }
 
   other->containers_by_id_.reserve(containers_by_id_.size());
@@ -118,20 +108,12 @@ std::unique_ptr<K8sMetadataState> K8sMetadataState::Clone() const {
     other->containers_by_id_[k] = v->Clone();
   }
 
-  other->services_by_name_.reserve(services_by_name_.size());
-  for (const auto& [k, v] : services_by_name_) {
-    other->services_by_name_[k] = v;
-  }
+  other->pods_by_name_ = pods_by_name_;
+  other->services_by_name_ = services_by_name_;
+  other->namespaces_by_name_ = namespaces_by_name_;
+  other->containers_by_name_ = containers_by_name_;
+  other->pods_by_ip_ = pods_by_ip_;
 
-  other->namespaces_by_name_.reserve(namespaces_by_name_.size());
-  for (const auto& [k, v] : namespaces_by_name_) {
-    other->namespaces_by_name_[k] = v;
-  }
-
-  other->containers_by_name_.reserve(containers_by_name_.size());
-  for (const auto& [k, v] : containers_by_name_) {
-    other->containers_by_name_[k] = v;
-  }
   return other;
 }
 
@@ -140,7 +122,7 @@ std::string K8sMetadataState::DebugString(int indent_level) const {
   std::string prefix = Indent(indent_level);
 
   str += prefix + "K8s Objects:\n";
-  for (const auto& it : k8s_objects_) {
+  for (const auto& it : k8s_objects_by_id_) {
     str += absl::Substitute("$0\n", it.second->DebugString(indent_level + 1));
   }
   str += "\n";
@@ -164,23 +146,24 @@ std::string K8sMetadataState::DebugString(int indent_level) const {
 }
 
 Status K8sMetadataState::HandlePodUpdate(const PodUpdate& update) {
-  const auto& object_uid = update.uid();
+  const UID& object_uid = update.uid();
   const std::string& name = update.name();
   const std::string& ns = update.namespace_();
 
-  auto it = k8s_objects_.find(object_uid);
-  if (it == k8s_objects_.end()) {
+  auto it = k8s_objects_by_id_.find(object_uid);
+  if (it == k8s_objects_by_id_.end()) {
     auto pod = std::make_unique<PodInfo>(update);
     VLOG(1) << "Adding Pod: " << pod->DebugString();
-    it = k8s_objects_.try_emplace(object_uid, std::move(pod)).first;
+    it = k8s_objects_by_id_.try_emplace(object_uid, std::move(pod)).first;
   }
+  auto pod_info = static_cast<PodInfo*>(it->second.get());
 
   // We always just add to the container set even if the container is stopped.
   // We expect all cleanup to happen periodically to allow stale objects to be queried for some
   // time. Also, because we expect eventual consistency container ID may or may not be available
   // before the container state is available. Upstream code using this needs to be aware that the
   // state might be periodically inconsistent.
-  auto pod_info = static_cast<PodInfo*>(it->second.get());
+
   for (const auto& cid : update.container_ids()) {
     if (containers_by_id_.find(cid) == containers_by_id_.end()) {
       // We should be resilient to the case where we happened to miss a pod update
@@ -214,7 +197,7 @@ Status K8sMetadataState::HandlePodUpdate(const PodUpdate& update) {
 }
 
 Status K8sMetadataState::HandleContainerUpdate(const ContainerUpdate& update) {
-  const auto& cid = update.cid();
+  const CID& cid = update.cid();
 
   auto it = containers_by_id_.find(cid);
   if (it == containers_by_id_.end()) {
@@ -236,29 +219,29 @@ Status K8sMetadataState::HandleContainerUpdate(const ContainerUpdate& update) {
 }
 
 Status K8sMetadataState::HandleServiceUpdate(const ServiceUpdate& update) {
-  const auto& service_uid = update.uid();
+  const UID& service_uid = update.uid();
   const std::string& name = update.name();
   const std::string& ns = update.namespace_();
 
-  auto it = k8s_objects_.find(service_uid);
-  if (it == k8s_objects_.end()) {
+  auto it = k8s_objects_by_id_.find(service_uid);
+  if (it == k8s_objects_by_id_.end()) {
     auto service = std::make_unique<ServiceInfo>(service_uid, ns, name);
     VLOG(1) << "Adding Service: " << service->DebugString();
-    it = k8s_objects_.try_emplace(service_uid, std::move(service)).first;
+    it = k8s_objects_by_id_.try_emplace(service_uid, std::move(service)).first;
   }
-
   auto service_info = static_cast<ServiceInfo*>(it->second.get());
+
   for (const auto& uid : update.pod_ids()) {
-    if (k8s_objects_.find(uid) == k8s_objects_.end()) {
+    if (k8s_objects_by_id_.find(uid) == k8s_objects_by_id_.end()) {
       // We should be resilient to the case where we happened to miss a pod update
       // in the stream of events. If we did miss a pod update, just skip adding the
       // pod to this particular service to avoid dangling references.
       LOG(INFO) << absl::Substitute("Didn't find pod UID $0 for service $1/$2", uid, ns, name);
       continue;
     }
-    ECHECK(k8s_objects_[uid]->type() == K8sObjectType::kPod);
+    ECHECK(k8s_objects_by_id_[uid]->type() == K8sObjectType::kPod);
     // We add the service uid to the pod. Lifetime of service still handled by the service object.
-    PodInfo* pod_info = static_cast<PodInfo*>(k8s_objects_[uid].get());
+    PodInfo* pod_info = static_cast<PodInfo*>(k8s_objects_by_id_[uid].get());
     pod_info->AddService(service_uid);
   }
   service_info->set_start_time_ns(update.start_timestamp_ns());
@@ -271,17 +254,16 @@ Status K8sMetadataState::HandleServiceUpdate(const ServiceUpdate& update) {
 }
 
 Status K8sMetadataState::HandleNamespaceUpdate(const NamespaceUpdate& update) {
-  const auto& namespace_uid = update.uid();
+  const UID& namespace_uid = update.uid();
   const std::string& name = update.name();
   const std::string& ns = update.name();
 
-  auto it = k8s_objects_.find(namespace_uid);
-  if (it == k8s_objects_.end()) {
+  auto it = k8s_objects_by_id_.find(namespace_uid);
+  if (it == k8s_objects_by_id_.end()) {
     auto ns_obj = std::make_unique<NamespaceInfo>(namespace_uid, ns, name);
     VLOG(1) << "Adding Namespace: " << ns_obj->DebugString();
-    it = k8s_objects_.try_emplace(namespace_uid, std::move(ns_obj)).first;
+    it = k8s_objects_by_id_.try_emplace(namespace_uid, std::move(ns_obj)).first;
   }
-
   auto ns_info = static_cast<NamespaceInfo*>(it->second.get());
 
   ns_info->set_start_time_ns(update.start_timestamp_ns());
@@ -290,6 +272,62 @@ Status K8sMetadataState::HandleNamespaceUpdate(const NamespaceUpdate& update) {
   VLOG(1) << "namespace update: " << update.name();
 
   namespaces_by_name_[{ns, name}] = namespace_uid;
+  return Status::OK();
+}
+
+template <typename T>
+bool IsExpired(const T& obj, int64_t retention_time, int64_t now) {
+  if (obj.stop_time_ns() == 0) {
+    // Stop time of zero means it has not stopped yet.
+    return false;
+  }
+
+  int64_t expiry_time = obj.stop_time_ns() + retention_time;
+  return now > expiry_time;
+}
+
+Status K8sMetadataState::CleanupExpiredMetadata(int64_t retention_time_ns) {
+  int64_t now = CurrentTimeNS();
+
+  for (auto iter = k8s_objects_by_id_.begin(); iter != k8s_objects_by_id_.end();) {
+    const auto& k8s_object = iter->second;
+
+    if (!IsExpired(*k8s_object, retention_time_ns, now)) {
+      ++iter;
+      continue;
+    }
+
+    switch (k8s_object->type()) {
+      case K8sObjectType::kPod:
+        pods_by_name_.erase({k8s_object->ns(), k8s_object->name()});
+        pods_by_ip_.erase(static_cast<PodInfo*>(k8s_object.get())->pod_ip());
+        break;
+      case K8sObjectType::kNamespace:
+        namespaces_by_name_.erase({k8s_object->ns(), k8s_object->name()});
+        break;
+      case K8sObjectType::kService:
+        services_by_name_.erase({k8s_object->ns(), k8s_object->name()});
+        break;
+      default:
+        LOG(DFATAL) << absl::Substitute("Unexpected object type: $0",
+                                        static_cast<int>(k8s_object->type()));
+    }
+
+    k8s_objects_by_id_.erase(iter++);
+  }
+
+  for (auto iter = containers_by_id_.begin(); iter != containers_by_id_.end();) {
+    const auto& cinfo = iter->second;
+
+    if (!IsExpired(*cinfo, retention_time_ns, now)) {
+      ++iter;
+      continue;
+    }
+
+    containers_by_name_.erase(cinfo->name());
+    containers_by_id_.erase(iter++);
+  }
+
   return Status::OK();
 }
 
@@ -318,7 +356,6 @@ std::string AgentMetadataState::DebugString(int indent_level) const {
   str += prefix + k8s_metadata_state_->DebugString(indent_level);
   str += prefix + absl::Substitute("PIDS($0)\n", pids_by_upid_.size());
   for (const auto& [upid, upid_info] : pids_by_upid_) {
-    PL_UNUSED(upid);
     str += prefix + absl::Substitute("$0\n", upid_info->DebugString());
   }
 

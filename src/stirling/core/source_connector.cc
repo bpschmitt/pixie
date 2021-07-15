@@ -18,15 +18,12 @@
 
 #include <cstring>
 #include <ctime>
+#include <memory>
+#include <utility>
 
 #include <magic_enum.hpp>
 
 #include "src/stirling/core/source_connector.h"
-
-DEFINE_bool(stirling_source_connector_output_multiple_data_tables, true,
-            "If true, source connectors that support outputting data to multiple data tables, "
-            "will output data to all data tables. "
-            "Temporary, will be removed once tested.");
 
 namespace px {
 namespace stirling {
@@ -39,25 +36,39 @@ Status SourceConnector::Init() {
   LOG(INFO) << absl::Substitute("Initializing source connector: $0", name());
   Status s = InitImpl();
   state_ = s.ok() ? State::kActive : State::kErrors;
+
+  DCHECK_NE(sampling_freq_mgr_.period().count(), 0) << "Sampling period has not been initialized";
+  DCHECK_NE(push_freq_mgr_.period().count(), 0) << "Push period has not been initialized";
+
   return s;
 }
 
 void SourceConnector::InitContext(ConnectorContext* ctx) { InitContextImpl(ctx); }
 
-void SourceConnector::TransferData(ConnectorContext* ctx, uint32_t table_num,
-                                   DataTable* data_table) {
-  DCHECK(ctx != nullptr);
-  DCHECK_LT(table_num, num_tables())
-      << absl::Substitute("Access to table out of bounds: table_num=$0", table_num);
-  TransferDataImpl(ctx, table_num, data_table);
-}
-
 void SourceConnector::TransferData(ConnectorContext* ctx,
                                    const std::vector<DataTable*>& data_tables) {
   DCHECK(ctx != nullptr);
-  DCHECK_EQ(data_tables.size(), num_tables()) << "DataTable objects must all be specified.";
+  DCHECK_EQ(data_tables.size(), table_schemas().size())
+      << "DataTable objects must all be specified.";
   TransferDataImpl(ctx, data_tables);
-  sample_push_freq_mgr_.Sample();
+  sampling_freq_mgr_.Reset();
+}
+
+void SourceConnector::PushData(DataPushCallback agent_callback,
+                               const std::vector<DataTable*>& data_tables) {
+  for (auto* data_table : data_tables) {
+    auto record_batches = data_table->ConsumeRecords();
+    for (auto& record_batch : record_batches) {
+      if (record_batch.records.empty()) {
+        continue;
+      }
+      Status s = agent_callback(
+          data_table->id(), record_batch.tablet_id,
+          std::make_unique<types::ColumnWrapperRecordBatch>(std::move(record_batch.records)));
+      LOG_IF(DFATAL, !s.ok()) << absl::Substitute("Failed to push data. Message = $0", s.msg());
+    }
+  }
+  push_freq_mgr_.Reset();
 }
 
 Status SourceConnector::Stop() {

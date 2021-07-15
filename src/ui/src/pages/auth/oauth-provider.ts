@@ -19,11 +19,12 @@
 // Not actually using React in this class, but implementors may offer a component that does.
 import type * as React from 'react';
 
-import { FormStructure } from '@pixie-labs/components';
+import { FormStructure } from 'app/components';
 
 export type Token = {
   isEmailUnverified?: boolean;
   accessToken?: string;
+  idToken?: string;
 };
 
 /** OAuthProviderClient is the interface for OAuth providers such as Auth0 and ORY/Hydra. */

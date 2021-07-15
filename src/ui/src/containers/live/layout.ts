@@ -44,7 +44,7 @@ const MOBILE_GRID_WIDTH = 4;
 const MOBILE_NUM_COLS = 1;
 const MOBILE_WIDGET_HEIGHT = 2;
 
-export function getGridWidth(isMobile: boolean) {
+export function getGridWidth(isMobile: boolean): number {
   return isMobile ? MOBILE_GRID_WIDTH : DEFAULT_GRID_WIDTH;
 }
 
@@ -80,7 +80,7 @@ function mobileWidgetPositions(numWidgets: number) {
 
 // addLayout is only called in the non-mobile case.
 export function addLayout(visSpec: Vis): Vis {
-  for (let i = 0; i < visSpec.widgets.length; ++i) {
+  for (let i = 0; i < visSpec?.widgets.length; ++i) {
     const widget = visSpec.widgets[i];
     if (!widget.position) {
       const positions = defaultWidgetPositions(visSpec.widgets.length);
@@ -103,7 +103,22 @@ function widgetName(widget: Widget, widgetIndex: number): string {
 
 // Generates the layout of a Live View, with mobile-specific layout that follow the overall
 // order of the vis spec positions but tiles it differently.
-export function toLayout(widgets: Widget[], isMobile: boolean): Layout[] {
+export function toLayout(widgets: Widget[], isMobile: boolean, selectedWidget: string | null): Layout[] {
+  if (widgets == null) { // Script has no vis spec.
+    return [];
+  }
+
+  // Single-widget layout if a widget selector is specified.
+  if (selectedWidget) {
+    return [{
+      i: selectedWidget,
+      x: 0,
+      y: 0,
+      w: (isMobile ? MOBILE_GRID_WIDTH : DEFAULT_GRID_WIDTH) * 1.5,
+      h: (isMobile ? MOBILE_WIDGET_HEIGHT : DEFAULT_WIDGET_HEIGHT) * 1.5,
+    }];
+  }
+
   const nonMobileLayout = widgets.map((widget, i) => ({
     ...widget.position,
     i: widgetName(widget, i),

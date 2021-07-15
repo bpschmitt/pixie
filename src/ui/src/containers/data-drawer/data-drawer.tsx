@@ -16,12 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { LazyPanel, ResizableDrawer, Spinner } from '@pixie-labs/components';
-import { DataDrawerContext } from 'context/data-drawer-context';
-import { LayoutContext } from 'context/layout-context';
-import { ResultsContext } from 'context/results-context';
+import { LazyPanel, ResizableDrawer, Spinner } from 'app/components';
+import { DataDrawerContext } from 'app/context/data-drawer-context';
+import { LayoutContext } from 'app/context/layout-context';
+import { ResultsContext } from 'app/context/results-context';
+
 import * as React from 'react';
-import { VizierDataTableWithDetails } from 'containers/vizier-data-table/vizier-data-table';
+import { LiveDataTableWithDetails } from 'app/containers/live-data-table/live-data-table';
 import DownIcon from '@material-ui/icons/KeyboardArrowDown';
 import UpIcon from '@material-ui/icons/KeyboardArrowUp';
 import {
@@ -46,6 +47,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     flexDirection: 'column',
     flex: 1,
     pointerEvents: 'auto',
+    overflow: 'hidden',
   },
   execStats: {
     flex: 1,
@@ -53,8 +55,6 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   },
   resultTable: {
     marginTop: theme.spacing(2),
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(4),
     flex: 1,
     minHeight: 0,
   },
@@ -106,6 +106,10 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     '&:focus': {
       color: `${theme.palette.primary.light} !important`,
     },
+    '& span': {
+      alignItems: 'flex-end',
+      paddingRight: theme.spacing(2),
+    },
     color: theme.palette.foreground.three,
   },
   toggle: {
@@ -116,6 +120,11 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   fab: {
     height: theme.spacing(2),
     zIndex: 100,
+    borderTopLeftRadius: theme.spacing(1),
+    borderTopRightRadius: theme.spacing(1),
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    backgroundColor: theme.palette.foreground.three,
   },
   drawer: {
     pointerEvents: 'auto',
@@ -158,6 +167,7 @@ const StyledTab = withStyles((theme: Theme) => createStyles({
 const DataDrawer = ({ open, activeTab, setActiveTab }) => {
   const classes = useStyles();
   const { loading, stats, tables } = React.useContext(ResultsContext);
+
   const onTabChange = (event, newTab) => {
     setActiveTab(newTab);
     if (open && newTab !== activeTab) {
@@ -166,7 +176,7 @@ const DataDrawer = ({ open, activeTab, setActiveTab }) => {
   };
   const tabs = React.useMemo(() => Object.keys(tables).map((tableName) => ({
     title: tableName,
-    content: <VizierDataTableWithDetails table={tables[tableName]} />,
+    content: <LiveDataTableWithDetails table={tables[tableName]} />,
   })), [tables]);
 
   // If the selected table is not in the new result set, show the first table.
@@ -250,7 +260,7 @@ const DataDrawer = ({ open, activeTab, setActiveTab }) => {
   );
 };
 
-export const DataDrawerSplitPanel = (props) => {
+export const DataDrawerSplitPanel: React.FC = () => {
   const classes = useStyles();
 
   const { dataDrawerOpen, setDataDrawerOpen } = React.useContext(LayoutContext);
@@ -273,6 +283,7 @@ export const DataDrawerSplitPanel = (props) => {
     <ResizableDrawer
       drawerDirection='bottom'
       initialSize={350}
+      minSize={0}
       open={dataDrawerOpen}
       otherContent={contents}
       overlay={false}

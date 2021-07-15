@@ -41,6 +41,8 @@
 // This keeps instruction count below BPF's limit of 4096 per probe.
 #define LOOP_LIMIT 45
 
+const int32_t kInvalidFD = -1;
+
 // Determines what percentage of events must be inferred as a certain type for us to consider the
 // connection to be of that type. Encoded as a numerator/denominator. Currently set to 20%. While
 // this may seem low, one must consider that not all captures are packet-aligned, and the inference
@@ -67,37 +69,6 @@ BPF_PERF_OUTPUT(conn_stats_events);
 // This output is used to export notification of processes that have performed an mmap.
 BPF_PERF_OUTPUT(mmap_events);
 
-/***********************************************************
- * Internal structs and definitions
- ***********************************************************/
-
-struct connect_args_t {
-  const struct sockaddr* addr;
-  uint32_t fd;
-};
-
-struct accept_args_t {
-  struct sockaddr* addr;
-  struct socket* sock_alloc_socket;
-};
-
-struct data_args_t {
-  // Represents the function from which this argument group originates.
-  enum source_function_t source_fn;
-  uint32_t fd;
-  // For send()/recv()/write()/read().
-  const char* buf;
-  // For sendmsg()/recvmsg()/writev()/readv().
-  const struct iovec* iov;
-  size_t iovlen;
-  // For sendmmsg()
-  unsigned int* msg_len;
-};
-
-struct close_args_t {
-  uint32_t fd;
-};
-
 // This control_map is a bit-mask that controls which endpoints are traced in a connection.
 // The bits are defined in EndpointRole enum, kRoleClient or kRoleServer. kRoleUnknown is not
 // really used, but is defined for completeness.
@@ -107,7 +78,7 @@ BPF_PERCPU_ARRAY(control_map, uint64_t, kNumProtocols);
 // Map from user-space file descriptors to the connections obtained from accept() syscall.
 // Tracks connection from accept() -> close().
 // Key is {tgid, fd}.
-BPF_HASH(conn_info_map, uint64_t, struct conn_info_t);
+BPF_HASH(conn_info_map, uint64_t, struct conn_info_t, 131072);
 
 // Map to indicate which connections (TGID+FD), user-space has disabled.
 // This is tracked separately from conn_info_map to avoid any read-write races.
@@ -172,47 +143,43 @@ static __inline void set_open_file(uint64_t id, int fd) {
   open_file_map.insert(&tgid_fd, &kTrue);
 }
 
-static __inline bool is_open_file(uint64_t id, int fd) {
-  uint32_t tgid = id >> 32;
+static __inline bool is_open_file(uint32_t tgid, int fd) {
   uint64_t tgid_fd = gen_tgid_fd(tgid, fd);
   bool* open_file = open_file_map.lookup(&tgid_fd);
   return (open_file != NULL);
 }
 
-static __inline void clear_open_file(uint64_t id, int fd) {
-  uint32_t tgid = id >> 32;
+static __inline void clear_open_file(uint32_t tgid, int fd) {
   uint64_t tgid_fd = gen_tgid_fd(tgid, fd);
   open_file_map.delete(&tgid_fd);
 }
 
-static __inline void init_conn_id(uint32_t tgid, uint32_t fd, struct conn_id_t* conn_id) {
+static __inline void init_conn_id(uint32_t tgid, int32_t fd, struct conn_id_t* conn_id) {
   conn_id->upid.tgid = tgid;
   conn_id->upid.start_time_ticks = get_tgid_start_time();
   conn_id->fd = fd;
   conn_id->tsid = bpf_ktime_get_ns();
 }
 
-static __inline void init_conn_info(uint32_t tgid, uint32_t fd, struct conn_info_t* conn_info) {
+static __inline void init_conn_info(uint32_t tgid, int32_t fd, struct conn_info_t* conn_info) {
   init_conn_id(tgid, fd, &conn_info->conn_id);
   // NOTE: BCC code defaults to 0, because kRoleUnknown is not 0, must explicitly initialize.
   conn_info->role = kRoleUnknown;
-  conn_info->addr.sa.sa_family = AF_UNKNOWN;
+  conn_info->addr.sa.sa_family = PX_AF_UNKNOWN;
 }
 
 // Be careful calling this function. The automatic creation of BPF map entries can result in a
 // BPF map leak if called on unwanted probes.
 // How do we make sure we don't leak then? ConnInfoMapManager.ReleaseResources() will clean-up
 // the relevant map entries every time a ConnTracker is destroyed.
-static __inline struct conn_info_t* get_or_create_conn_info(uint32_t tgid, uint32_t fd) {
+static __inline struct conn_info_t* get_or_create_conn_info(uint32_t tgid, int32_t fd) {
   uint64_t tgid_fd = gen_tgid_fd(tgid, fd);
   struct conn_info_t new_conn_info = {};
   init_conn_info(tgid, fd, &new_conn_info);
   return conn_info_map.lookup_or_init(&tgid_fd, &new_conn_info);
 }
 
-static __inline void set_conn_as_ssl(uint64_t id, uint32_t fd) {
-  uint32_t tgid = id >> 32;
-  // Update conn_info, so that encrypted data data can be filtered out.
+static __inline void set_conn_as_ssl(uint32_t tgid, int32_t fd) {
   struct conn_info_t* conn_info = get_or_create_conn_info(tgid, fd);
   if (conn_info == NULL) {
     return;
@@ -261,9 +228,9 @@ static __inline struct conn_stats_event_t* fill_conn_stats_event(
  ***********************************************************/
 
 static __inline bool should_trace_sockaddr_family(sa_family_t sa_family) {
-  // AF_UNKNOWN means we never traced the accept/connect, and we don't know the sockaddr family.
+  // PX_AF_UNKNOWN means we never traced the accept/connect, and we don't know the sockaddr family.
   // Trace these because they *may* be a sockaddr of interest.
-  return sa_family == AF_UNKNOWN || sa_family == AF_INET || sa_family == AF_INET6;
+  return sa_family == PX_AF_UNKNOWN || sa_family == AF_INET || sa_family == AF_INET6;
 }
 
 // Returns true if detection passes threshold. Right now this is only used for PGSQL.
@@ -303,16 +270,27 @@ static __inline bool is_stirling_tgid(const uint32_t tgid) {
   return *stirling_tgid == tgid;
 }
 
-static __inline bool should_trace_tgid(const uint32_t tgid) {
+enum target_tgid_match_result_t {
+  TARGET_TGID_UNSPECIFIED,
+  TARGET_TGID_ALL,
+  TARGET_TGID_MATCHED,
+  TARGET_TGID_UNMATCHED,
+};
+
+static __inline enum target_tgid_match_result_t match_trace_tgid(const uint32_t tgid) {
   int idx = kTargetTGIDIndex;
   int64_t* target_tgid = control_values.lookup(&idx);
   if (target_tgid == NULL) {
-    return true;
+    return TARGET_TGID_UNSPECIFIED;
   }
   if (*target_tgid < 0) {
-    return true;
+    // Negative value means trace all.
+    return TARGET_TGID_ALL;
   }
-  return *target_tgid == tgid;
+  if (*target_tgid == tgid) {
+    return TARGET_TGID_MATCHED;
+  }
+  return TARGET_TGID_UNMATCHED;
 }
 
 static __inline void update_traffic_class(struct conn_info_t* conn_info,
@@ -327,7 +305,8 @@ static __inline void update_traffic_class(struct conn_info_t* conn_info,
   struct protocol_message_t inferred_protocol = infer_protocol(buf, count, conn_info);
 
   // Could not infer the traffic.
-  if (inferred_protocol.protocol == kProtocolUnknown) {
+  if (inferred_protocol.protocol == kProtocolUnknown || conn_info->protocol == kProtocolMongo ||
+      conn_info->protocol == kProtocolKafka) {
     return;
   }
 
@@ -389,7 +368,7 @@ static __inline void read_sockaddr_kernel(struct conn_info_t* conn_info,
   }
 }
 
-static __inline void submit_new_conn(struct pt_regs* ctx, uint32_t tgid, uint32_t fd,
+static __inline void submit_new_conn(struct pt_regs* ctx, uint32_t tgid, int32_t fd,
                                      const struct sockaddr* addr, const struct socket* socket,
                                      enum EndpointRole role) {
   struct conn_info_t conn_info = {};
@@ -438,12 +417,10 @@ static __inline void submit_close_event(struct pt_regs* ctx, struct conn_info_t*
 // Writes the input buf to event, and submits the event to the corresponding perf buffer.
 // Returns the bytes output from the input buf. Note that is not the total bytes submitted to the
 // perf buffer, which includes additional metadata.
-// If send_data is false, only the metadata is sent for accounting purposes (used for connection
-// stats).
 static __inline void perf_submit_buf(struct pt_regs* ctx, const enum TrafficDirection direction,
                                      const char* buf, size_t buf_size, size_t offset,
                                      struct conn_info_t* conn_info,
-                                     struct socket_data_event_t* event, bool send_data) {
+                                     struct socket_data_event_t* event) {
   switch (direction) {
     case kEgress:
       event->attr.pos = conn_info->wr_bytes + offset;
@@ -505,11 +482,7 @@ static __inline void perf_submit_buf(struct pt_regs* ctx, const enum TrafficDire
   // Buf size is always greater than 0, but the verifier doesn't know that.
   // 4.14 kernels otherwise reject bpf_probe_read with size that they may think is zero.
   if (buf_size_minus_1 < MAX_MSG_SIZE) {
-    if (send_data) {
-      bpf_probe_read(&event->msg, buf_size, buf);
-    } else {
-      buf_size = 0;
-    }
+    bpf_probe_read(&event->msg, buf_size, buf);
     event->attr.msg_buf_size = buf_size;
     socket_data_events.perf_submit(ctx, event, sizeof(event->attr) + buf_size);
   }
@@ -518,7 +491,7 @@ static __inline void perf_submit_buf(struct pt_regs* ctx, const enum TrafficDire
 static __inline void perf_submit_wrapper(struct pt_regs* ctx, const enum TrafficDirection direction,
                                          const char* buf, const size_t buf_size,
                                          struct conn_info_t* conn_info,
-                                         struct socket_data_event_t* event, bool send_data) {
+                                         struct socket_data_event_t* event) {
   int bytes_sent = 0;
   unsigned int i;
 
@@ -526,8 +499,7 @@ static __inline void perf_submit_wrapper(struct pt_regs* ctx, const enum Traffic
   for (i = 0; i < CHUNK_LIMIT; ++i) {
     const int bytes_remaining = buf_size - bytes_sent;
     const size_t current_size = bytes_remaining > MAX_MSG_SIZE ? MAX_MSG_SIZE : bytes_remaining;
-    perf_submit_buf(ctx, direction, buf + bytes_sent, current_size, bytes_sent, conn_info, event,
-                    send_data);
+    perf_submit_buf(ctx, direction, buf + bytes_sent, current_size, bytes_sent, conn_info, event);
     bytes_sent += current_size;
   }
 }
@@ -535,7 +507,7 @@ static __inline void perf_submit_wrapper(struct pt_regs* ctx, const enum Traffic
 static __inline void perf_submit_iovecs(struct pt_regs* ctx, const enum TrafficDirection direction,
                                         const struct iovec* iov, const size_t iovlen,
                                         const size_t total_size, struct conn_info_t* conn_info,
-                                        struct socket_data_event_t* event, bool send_data) {
+                                        struct socket_data_event_t* event) {
   // NOTE: The loop index 'i' used to be int. BPF verifier somehow conclude that msg_size inside
   // perf_submit_buf(), after a series of assignment, and passed into a function call, can be
   // negative.
@@ -561,8 +533,7 @@ static __inline void perf_submit_iovecs(struct pt_regs* ctx, const enum TrafficD
 
     // TODO(oazizi/yzhao): Should switch this to go through perf_submit_wrapper.
     //                     We don't have the BPF instruction count to do so right now.
-    perf_submit_buf(ctx, direction, iov_cpy.iov_base, iov_size, bytes_sent, conn_info, event,
-                    send_data);
+    perf_submit_buf(ctx, direction, iov_cpy.iov_base, iov_size, bytes_sent, conn_info, event);
     bytes_sent += iov_size;
   }
 }
@@ -638,7 +609,7 @@ static __inline void process_syscall_connect(struct pt_regs* ctx, uint64_t id,
   uint32_t tgid = id >> 32;
   int ret_val = PT_REGS_RC(ctx);
 
-  if (!should_trace_tgid(tgid)) {
+  if (match_trace_tgid(tgid) == TARGET_TGID_UNMATCHED) {
     return;
   }
 
@@ -658,7 +629,7 @@ static __inline void process_syscall_connect(struct pt_regs* ctx, uint64_t id,
     return;
   }
 
-  submit_new_conn(ctx, tgid, (uint32_t)args->fd, args->addr, /*socket*/ NULL, kRoleClient);
+  submit_new_conn(ctx, tgid, args->fd, args->addr, /*socket*/ NULL, kRoleClient);
 }
 
 static __inline void process_syscall_accept(struct pt_regs* ctx, uint64_t id,
@@ -666,7 +637,7 @@ static __inline void process_syscall_accept(struct pt_regs* ctx, uint64_t id,
   uint32_t tgid = id >> 32;
   int ret_fd = PT_REGS_RC(ctx);
 
-  if (!should_trace_tgid(tgid)) {
+  if (match_trace_tgid(tgid) == TARGET_TGID_UNMATCHED) {
     return;
   }
 
@@ -674,7 +645,7 @@ static __inline void process_syscall_accept(struct pt_regs* ctx, uint64_t id,
     return;
   }
 
-  submit_new_conn(ctx, tgid, (uint32_t)ret_fd, args->addr, args->sock_alloc_socket, kRoleServer);
+  submit_new_conn(ctx, tgid, ret_fd, args->addr, args->sock_alloc_socket, kRoleServer);
 }
 
 // TODO(oazizi): This is badly broken (but better than before).
@@ -702,7 +673,7 @@ static __inline void process_implicit_conn(struct pt_regs* ctx, uint64_t id,
                                            const struct connect_args_t* args) {
   uint32_t tgid = id >> 32;
 
-  if (!should_trace_tgid(tgid)) {
+  if (match_trace_tgid(tgid) == TARGET_TGID_UNMATCHED) {
     return;
   }
 
@@ -717,7 +688,7 @@ static __inline void process_implicit_conn(struct pt_regs* ctx, uint64_t id,
     return;
   }
 
-  submit_new_conn(ctx, tgid, (uint32_t)args->fd, args->addr, /*socket*/ NULL, kRoleUnknown);
+  submit_new_conn(ctx, tgid, args->fd, args->addr, /*socket*/ NULL, kRoleUnknown);
 }
 
 static __inline void process_data(const bool vecs, struct pt_regs* ctx, uint64_t id,
@@ -742,11 +713,12 @@ static __inline void process_data(const bool vecs, struct pt_regs* ctx, uint64_t
     return;
   }
 
-  if (is_open_file(id, args->fd)) {
+  if (is_open_file(tgid, args->fd)) {
     return;
   }
 
-  if (!should_trace_tgid(tgid)) {
+  enum target_tgid_match_result_t match_result = match_trace_tgid(tgid);
+  if (match_result == TARGET_TGID_UNMATCHED) {
     return;
   }
 
@@ -789,24 +761,27 @@ static __inline void process_data(const bool vecs, struct pt_regs* ctx, uint64_t
 
   uint64_t* conn_disabled_tsid = conn_disabled_map.lookup(&tgid_fd);
 
-  bool send_data = !is_stirling_tgid(tgid) && should_trace_protocol_data(conn_info) &&
+  bool send_data = !is_stirling_tgid(tgid) &&
+                   (match_result == TARGET_TGID_MATCHED || should_trace_protocol_data(conn_info)) &&
                    (conn_disabled_tsid == NULL || conn_info->conn_id.tsid > *conn_disabled_tsid);
 
-  struct socket_data_event_t* event = fill_socket_data_event(args->source_fn, direction, conn_info);
-  if (event == NULL) {
-    // event == NULL not expected to ever happen.
-    return;
-  }
+  if (send_data) {
+    struct socket_data_event_t* event =
+        fill_socket_data_event(args->source_fn, direction, conn_info);
+    if (event == NULL) {
+      // event == NULL not expected to ever happen.
+      return;
+    }
 
-  // TODO(yzhao): Same TODO for split the interface.
-  if (!vecs) {
-    perf_submit_wrapper(ctx, direction, args->buf, bytes_count, conn_info, event, send_data);
-  } else {
-    // TODO(yzhao): iov[0] is copied twice, once in calling update_traffic_class(), and here.
-    // This happens to the write probes as well, but the calls are placed in the entry and return
-    // probes respectively. Consider remove one copy.
-    perf_submit_iovecs(ctx, direction, args->iov, args->iovlen, bytes_count, conn_info, event,
-                       send_data);
+    // TODO(yzhao): Same TODO for split the interface.
+    if (!vecs) {
+      perf_submit_wrapper(ctx, direction, args->buf, bytes_count, conn_info, event);
+    } else {
+      // TODO(yzhao): iov[0] is copied twice, once in calling update_traffic_class(), and here.
+      // This happens to the write probes as well, but the calls are placed in the entry and return
+      // probes respectively. Consider remove one copy.
+      perf_submit_iovecs(ctx, direction, args->iov, args->iovlen, bytes_count, conn_info, event);
+    }
   }
 
   // Update state of the connection.
@@ -868,14 +843,14 @@ static __inline void process_syscall_close(struct pt_regs* ctx, uint64_t id,
     return;
   }
 
-  clear_open_file(id, close_args->fd);
+  clear_open_file(tgid, close_args->fd);
 
   if (ret_val < 0) {
     // This close() call failed.
     return;
   }
 
-  if (!should_trace_tgid(tgid)) {
+  if (match_trace_tgid(tgid) == TARGET_TGID_UNMATCHED) {
     return;
   }
 

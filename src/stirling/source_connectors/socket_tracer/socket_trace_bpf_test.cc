@@ -25,14 +25,13 @@
 
 #include <magic_enum.hpp>
 
-#include "src/common/system/boot_clock.h"
+#include "src/common/system/clock.h"
 #include "src/common/system/tcp_socket.h"
 #include "src/common/system/udp_socket.h"
 #include "src/shared/metadata/metadata.h"
 #include "src/shared/types/column_wrapper.h"
 #include "src/shared/types/types.h"
 #include "src/stirling/core/data_table.h"
-#include "src/stirling/core/output.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/socket_trace.hpp"
 #include "src/stirling/source_connectors/socket_tracer/socket_trace_connector.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/client_server_system.h"
@@ -628,10 +627,11 @@ TEST_F(UDPSocketTraceBPFTest, NonBlockingRecv) {
 class SocketTraceServerSideBPFTest
     : public testing::SocketTraceBPFTest</* TClientSideTracing */ false> {};
 
-// Tests that connection stats are updated after ConnTracker is disabled because of being
-// a client.
-TEST_F(SocketTraceServerSideBPFTest, ConnStatsUpdatedAfterConnTrackerDisabled) {
-  using Stat = ConnTracker::Stats::Key;
+// Tests stats for a disabled ConnTracker.
+// Now that ConnStats is tracked independently, these stats are expected to stop
+// updating after the tracker is disabled.
+TEST_F(SocketTraceServerSideBPFTest, StatsDisabledTracker) {
+  using Stat = ConnTracker::StatKey;
 
   auto* socket_trace_connector = dynamic_cast<SocketTraceConnector*>(source_.get());
 
@@ -639,8 +639,9 @@ TEST_F(SocketTraceServerSideBPFTest, ConnStatsUpdatedAfterConnTrackerDisabled) {
 
   std::vector<std::unique_ptr<DataTable>> data_tables;
   std::vector<DataTable*> data_table_ptrs;
+  uint64_t id = 0;
   for (const auto& table_schema : SocketTraceConnector::kTables) {
-    data_tables.emplace_back(std::make_unique<DataTable>(table_schema));
+    data_tables.emplace_back(std::make_unique<DataTable>(id++, table_schema));
     data_table_ptrs.push_back(data_tables.back().get());
   }
 
@@ -696,12 +697,11 @@ TEST_F(SocketTraceServerSideBPFTest, ConnStatsUpdatedAfterConnTrackerDisabled) {
 
   source_->TransferData(ctx_.get(), data_table_ptrs);
 
-  EXPECT_EQ(client_side_tracker->GetStat(Stat::kBytesSent),
-            kHTTPReqMsg1.size() + kHTTPReqMsg2.size());
+  EXPECT_EQ(client_side_tracker->GetStat(Stat::kBytesSent), kHTTPReqMsg1.size());
   EXPECT_EQ(client_side_tracker->GetStat(Stat::kBytesSentTransferred), kHTTPReqMsg1.size())
       << "Data transfer was disabled, so the counter should be the same.";
-  EXPECT_EQ(client_side_tracker->GetStat(Stat::kDataEventSent), 2);
-  EXPECT_EQ(client_side_tracker->GetStat(Stat::kDataEventRecv), 2);
+  EXPECT_EQ(client_side_tracker->GetStat(Stat::kDataEventSent), 1);
+  EXPECT_EQ(client_side_tracker->GetStat(Stat::kDataEventRecv), 1);
   EXPECT_EQ(client_side_tracker->GetStat(Stat::kValidRecords), 0);
   EXPECT_EQ(client_side_tracker->GetStat(Stat::kInvalidRecords), 0);
 

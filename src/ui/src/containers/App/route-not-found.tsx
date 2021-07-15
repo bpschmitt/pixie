@@ -18,7 +18,7 @@
 
 import * as React from 'react';
 import { useLocation } from 'react-router';
-import { PixienautBox } from '@pixie-labs/components';
+import { PixienautBox } from 'app/components';
 import {
   Button,
   makeStyles,
@@ -48,7 +48,7 @@ const useStyles = makeStyles(({ palette, spacing }: Theme) => createStyles({
   },
 }));
 
-export const RouteNotFound = () => {
+export const RouteNotFound: React.FC = () => {
   const styles = useStyles();
   const { pathname } = useLocation();
   return (

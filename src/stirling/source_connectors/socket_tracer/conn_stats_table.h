@@ -48,8 +48,7 @@ constexpr DataElement kConnStatsElements[] = {
         {"bytes_recv", "The number of bytes received from the remote endpoint(s).",
          types::DataType::INT64, types::SemanticType::ST_BYTES, types::PatternType::METRIC_COUNTER},
 #ifndef NDEBUG
-        {"px_info_", "Pixie messages regarding the record (e.g. warnings)",
-         types::DataType::STRING, types::SemanticType::ST_NONE, types::PatternType::GENERAL},
+        canonical_data_elements::kPXInfo,
 #endif
 };
 // clang-format on
@@ -59,9 +58,8 @@ constexpr DataTableSchema kConnStatsTable(
     "Connection-level stats. This table contains statistics on the communications made between "
     "client-server pairs. For network-level information such as RX/TX errors and drops, see the "
     "Network-Layer Stats (network_stats) table.",
-    kConnStatsElements,
-    /* default_sampling_period */ std::chrono::milliseconds{5000},
-    /* default_push_period */ std::chrono::milliseconds{5000});
+    kConnStatsElements);
+DEFINE_PRINT_TABLE(ConnStats)
 
 namespace conn_stats_idx {
 

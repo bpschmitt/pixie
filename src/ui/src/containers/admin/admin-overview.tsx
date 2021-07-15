@@ -16,6 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { gql, useMutation } from '@apollo/client';
 import * as React from 'react';
 
 import {
@@ -27,15 +28,16 @@ import Button from '@material-ui/core/Button';
 import TableContainer from '@material-ui/core/TableContainer';
 import Add from '@material-ui/icons/Add';
 
-import { DeploymentKeysTable } from 'containers/admin/deployment-keys';
-import { APIKeysTable } from 'containers/admin/api-keys';
-import { UsersTable } from 'containers/admin/org-users';
-import { ClustersTable } from 'containers/admin/clusters-list';
-import { OrgSettings } from 'containers/admin/org-settings';
-import { StyledTab, StyledTabs } from 'containers/admin/utils';
-import { GetOAuthProvider } from 'pages/auth/utils';
-import { scrollbarStyles } from '@pixie-labs/components';
-import { useAPIKeys, useDeploymentKeys } from '@pixie-labs/api-react';
+import { DeploymentKeysTable } from 'app/containers/admin/deployment-keys';
+import { APIKeysTable } from 'app/containers/admin/api-keys';
+import { UsersTable } from 'app/containers/admin/org-users';
+import { ClustersTable } from 'app/containers/admin/clusters-list';
+import { OrgSettings } from 'app/containers/admin/org-settings';
+import { StyledTab, StyledTabs } from 'app/containers/admin/utils';
+import { GetOAuthProvider } from 'app/pages/auth/utils';
+import { scrollbarStyles } from 'app/components';
+import { GQLAPIKey, GQLDeploymentKey } from 'app/types/schema';
+
 import {
   Route, Switch, useHistory, useLocation, useRouteMatch,
 } from 'react-router-dom';
@@ -55,6 +57,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     display: 'flex',
     zIndex: 1, // Without this, inputs and icons in the table layer on top and break the illusion.
     paddingBottom: theme.spacing(1), // Aligns the visual size of the tab bar with the margin above it.
+    backgroundColor: theme.palette.background.paper,
   },
   tabContents: {
     margin: theme.spacing(1),
@@ -68,8 +71,30 @@ export const AdminOverview: React.FC = () => {
   const history = useHistory();
   const location = useLocation();
   const { path } = useRouteMatch();
-  const [{ createDeploymentKey }] = useDeploymentKeys();
-  const [{ createAPIKey }] = useAPIKeys();
+
+  const [createAPIKey] = useMutation<{ CreateAPIKey: GQLAPIKey }, void>(gql`
+    mutation CreateAPIKeyFromAdminPage {
+      CreateAPIKey {
+        id
+        key
+        desc
+        createdAtMs
+      }
+    }
+  `);
+  const [createDeploymentKey] = useMutation<
+  { CreateDeploymentKey: GQLDeploymentKey }, void
+  >(gql`
+    mutation CreateDeploymentKeyFromAdminPage{
+      CreateDeploymentKey {
+        id
+        key
+        desc
+        createdAtMs
+      }
+    }
+  `);
+
   // Path can be just /, or can be /trailing/slash. Thus variable length logic.
   const [tab, setTab] = React.useState(location.pathname.slice(path.length > 1 ? path.length + 1 : 0));
 
@@ -102,7 +127,30 @@ export const AdminOverview: React.FC = () => {
         {tab.endsWith('deployment-keys')
         && (
           <Button
-            onClick={() => createDeploymentKey()}
+            onClick={() => createDeploymentKey({
+              // This immediately adds a row to the table, so gives the user
+              // an indication that clicking "Add" did something but the data
+              // added is "wrong" and flashes with the correct data once the
+              // actual response comes in.
+              // TODO: Maybe we should assign client side IDs here.
+              // The key is hidden by default so that value changing on
+              // server response isn't that bad.
+              optimisticResponse: {
+                CreateDeploymentKey: {
+                  id: '00000000-0000-0000-0000-000000000000',
+                  key: '00000000-0000-0000-0000-000000000000',
+                  desc: '',
+                  createdAtMs: Date.now(),
+                },
+              },
+              update: (cache, { data }) => {
+                cache.modify({
+                  fields: {
+                    deploymentKeys: (existingKeys) => ([data.CreateDeploymentKey].concat(existingKeys)),
+                  },
+                });
+              },
+            })}
             className={classes.createButton}
             variant='outlined'
             startIcon={<Add />}
@@ -113,7 +161,30 @@ export const AdminOverview: React.FC = () => {
         {tab.endsWith('api-keys')
         && (
           <Button
-            onClick={() => createAPIKey()}
+            onClick={() => createAPIKey({
+              // This immediately adds a row to the table, so gives the user
+              // an indication that clicking "Add" did something but the data
+              // added is "wrong" and flashes with the correct data once the
+              // actual response comes in.
+              // TODO: Maybe we should assign client side IDs here.
+              // The key is hidden by default so that value changing on
+              // server response isn't that bad.
+              optimisticResponse: {
+                CreateAPIKey: {
+                  id: '00000000-0000-0000-0000-000000000000',
+                  key: '00000000-0000-0000-0000-000000000000',
+                  desc: '',
+                  createdAtMs: Date.now(),
+                },
+              },
+              update: (cache, { data }) => {
+                cache.modify({
+                  fields: {
+                    apiKeys: (existingKeys) => ([data.CreateAPIKey].concat(existingKeys)),
+                  },
+                });
+              },
+            })}
             className={classes.createButton}
             variant='outlined'
             startIcon={<Add />}

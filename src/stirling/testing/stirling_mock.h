@@ -33,7 +33,7 @@ namespace stirling {
 
 class MockStirling : public Stirling {
  public:
-  MOCK_METHOD(void, RegisterUserDebugSignalHandlers, (), (override));
+  MOCK_METHOD(void, RegisterUserDebugSignalHandlers, (int), (override));
   MOCK_METHOD(void, RegisterTracepoint,
               (sole::uuid trace_id,
                std::unique_ptr<dynamic_tracing::ir::logical::TracepointDeployment> program),
@@ -41,7 +41,6 @@ class MockStirling : public Stirling {
   MOCK_METHOD(StatusOr<stirlingpb::Publish>, GetTracepointInfo, (sole::uuid trace_id), (override));
   MOCK_METHOD(Status, RemoveTracepoint, (sole::uuid trace_id), (override));
   MOCK_METHOD(void, GetPublishProto, (stirlingpb::Publish * publish_pb), (override));
-  MOCK_METHOD(Status, SetSubscription, (const stirlingpb::Subscribe& subscribe_proto), (override));
   MOCK_METHOD(void, RegisterDataPushCallback, (DataPushCallback f), (override));
   MOCK_METHOD(void, RegisterAgentMetadataCallback, (AgentMetadataCallback f), (override));
   MOCK_METHOD(void, Run, (), (override));

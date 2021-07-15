@@ -53,7 +53,7 @@ class GoHTTPTraceTest : public SocketTraceBPFTest</* TClientSideTracing */ false
 
   testing::GoHTTPFixture go_http_fixture_;
 
-  DataTable data_table_{kHTTPTable};
+  DataTable data_table_{/*id*/ 0, kHTTPTable};
 };
 
 TEST_F(GoHTTPTraceTest, RequestAndResponse) {
@@ -180,6 +180,7 @@ TEST_P(TraceRoleTest, VerifyRecordsCount) {
 
     server_record_ids =
         testing::FindRecordIdxMatchesPID(record_batch, kHTTPUPIDIdx, go_http_fixture_.server_pid());
+    PL_LOG_VAR(PrintHTTPTable(record_batch));
   }
 
   EXPECT_THAT(client_record_ids, SizeIs(param.client_records_count));

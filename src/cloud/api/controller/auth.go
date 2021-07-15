@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -90,6 +91,7 @@ func AuthSignupHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request
 	// Extract params from the body which consists of the Auth0 ID token.
 	var params struct {
 		AccessToken string
+		IDToken     string
 	}
 
 	defer r.Body.Close()
@@ -105,6 +107,7 @@ func AuthSignupHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request
 
 	rpcReq := &authpb.SignupRequest{
 		AccessToken: params.AccessToken,
+		IdToken:     params.IDToken,
 	}
 
 	resp, err := env.(apienv.APIEnv).AuthClient().Signup(ctxWithCreds, rpcReq)
@@ -160,7 +163,7 @@ func AuthSignupHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	setSessionCookie(session, resp.Token, resp.ExpiresAt, r, w)
+	setSessionCookie(session, resp.Token, resp.ExpiresAt, r, w, http.SameSiteStrictMode)
 
 	err = sendSignupUserInfo(w, resp.UserInfo, resp.Token, resp.ExpiresAt, resp.OrgCreated)
 	if err != nil {
@@ -173,9 +176,88 @@ func AuthSignupHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request
 	return nil
 }
 
+// AuthLoginEmbedHandler make requests to the authpb service and sets session cookies.
+// Request-type: application/json.
+// Params: accessToken (auth0 accessToken), redirectURI (relative path)
+func AuthLoginEmbedHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		return handler.NewStatusError(http.StatusMethodNotAllowed, "not a post request")
+	}
+
+	apiEnv, ok := env.(apienv.APIEnv)
+	if !ok {
+		return handler.NewStatusError(http.StatusInternalServerError, "failed to get environment")
+	}
+
+	// GetDefaultSession, will always return a valid session, even if it is empty.
+	// We don't check the err here because even if the preexisting
+	// session cookie is expired or couldn't be decoded, we will overwrite it below anyway.
+	session, _ := GetDefaultSession(apiEnv, r)
+	// This should never be nil, but we check to be sure.
+	if session == nil {
+		return handler.NewStatusError(http.StatusInternalServerError, "failed to get session cookie")
+	}
+
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil
+	}
+	accessToken := r.FormValue("accessToken")
+	redirectURI := r.FormValue("redirectURI")
+
+	if len(redirectURI) == 0 {
+		http.Error(w, "redirectURI must be specified", http.StatusBadRequest)
+		return nil
+	}
+	parsedURI, err := url.Parse(redirectURI)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil
+	}
+	if len(parsedURI.Host) != 0 || len(parsedURI.Path) == 0 {
+		http.Error(w, "redirectURI must be a relative path", http.StatusBadRequest)
+		return nil
+	}
+
+	ctxWithCreds, err := attachCredentialsToContext(env, r)
+	if err != nil {
+		return &handler.StatusError{Code: http.StatusInternalServerError, Err: err}
+	}
+
+	rpcReq := &authpb.LoginRequest{
+		AccessToken:           accessToken,
+		CreateUserIfNotExists: false,
+	}
+
+	resp, err := env.(apienv.APIEnv).AuthClient().Login(ctxWithCreds, rpcReq)
+	if err != nil {
+		log.WithError(err).Errorf("RPC request to authpb service failed")
+		s, ok := status.FromError(err)
+		if ok {
+			if s.Code() == codes.Unauthenticated {
+				return handler.NewStatusError(http.StatusUnauthorized, s.Message())
+			}
+		}
+
+		return services.HTTPStatusFromError(err, "Failed to login")
+	}
+
+	userIDStr := utils.UUIDFromProtoOrNil(resp.UserInfo.UserID).String()
+
+	events.Client().Enqueue(&analytics.Track{
+		UserId: userIDStr,
+		Event:  events.UserLoggedIn,
+	})
+
+	setSessionCookie(session, resp.Token, resp.ExpiresAt, r, w, http.SameSiteNoneMode)
+	http.Redirect(w, r, "https://work."+viper.GetString("domain_name")+redirectURI, http.StatusSeeOther)
+	return nil
+}
+
 // AuthLoginHandler make requests to the authpb service and sets session cookies.
 // Request-type: application/json.
-// Params: accessToken (auth0 idtoken), state.
+// Params: accessToken (auth0 accessToken), state.
 func AuthLoginHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request) error {
 	if r.Method != http.MethodPost {
 		return handler.NewStatusError(http.StatusMethodNotAllowed, "not a post request")
@@ -197,9 +279,10 @@ func AuthLoginHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request)
 
 	// Extract params from the body which consists of the Auth0 ID token.
 	var params struct {
-		AccessToken string
-		State       string
-		OrgName     string
+		AccessToken string `json:"accessToken"`
+		IDToken     string `json:"idToken"`
+		State       string `json:"state"`
+		OrgName     string `json:"orgName"`
 	}
 
 	defer r.Body.Close()
@@ -217,6 +300,7 @@ func AuthLoginHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request)
 		AccessToken:           params.AccessToken,
 		CreateUserIfNotExists: true,
 		OrgName:               params.OrgName,
+		IdToken:               params.IDToken,
 	}
 
 	resp, err := env.(apienv.APIEnv).AuthClient().Login(ctxWithCreds, rpcReq)
@@ -251,7 +335,7 @@ func AuthLoginHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request)
 		Event:  ev,
 	})
 
-	setSessionCookie(session, resp.Token, resp.ExpiresAt, r, w)
+	setSessionCookie(session, resp.Token, resp.ExpiresAt, r, w, http.SameSiteNoneMode)
 
 	err = sendUserInfo(w, resp.UserInfo, resp.OrgInfo, resp.Token, resp.ExpiresAt, resp.UserCreated)
 	if err != nil {
@@ -261,7 +345,92 @@ func AuthLoginHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	return nil
+}
 
+// AuthLoginHandlerEmbedNew is the replacement embed login handler.
+// Request-type: application/json.
+// Params: accessToken (auth0 accessToken), state.
+func AuthLoginHandlerEmbedNew(env commonenv.Env, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		return handler.NewStatusError(http.StatusMethodNotAllowed, "not a post request")
+	}
+
+	// Extract params from the body which consists of the Auth0 ID token.
+	var params struct {
+		AccessToken string `json:"accessToken"`
+		IDToken     string `json:"idToken"`
+		State       string `json:"state"`
+	}
+
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		return handler.NewStatusError(http.StatusBadRequest,
+			"failed to decode json request")
+	}
+
+	ctxWithCreds, err := attachCredentialsToContext(env, r)
+	if err != nil {
+		return &handler.StatusError{Code: http.StatusInternalServerError, Err: err}
+	}
+
+	// If logging in using an API key, just get the augmented token.
+	apiKey := r.Header.Get("pixie-api-key")
+	if apiKey != "" {
+		apiKeyResp, err := env.(apienv.APIEnv).AuthClient().GetAugmentedTokenForAPIKey(ctxWithCreds, &authpb.GetAugmentedTokenForAPIKeyRequest{
+			APIKey: apiKey,
+		})
+		if err != nil {
+			return services.HTTPStatusFromError(err, "Failed to login using API key")
+		}
+
+		err = sendUserInfo(w, nil, nil, apiKeyResp.Token, apiKeyResp.ExpiresAt, false)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+
+	rpcReq := &authpb.LoginRequest{
+		AccessToken:           params.AccessToken,
+		CreateUserIfNotExists: false,
+		OrgName:               "",
+		IdToken:               params.IDToken,
+	}
+
+	resp, err := env.(apienv.APIEnv).AuthClient().Login(ctxWithCreds, rpcReq)
+	if err != nil {
+		log.WithError(err).Errorf("RPC request to authpb service failed")
+		s, ok := status.FromError(err)
+		if ok {
+			if s.Code() == codes.Unauthenticated {
+				return handler.NewStatusError(http.StatusUnauthorized, s.Message())
+			}
+		}
+
+		return services.HTTPStatusFromError(err, "Failed to login")
+	}
+
+	userIDStr := utils.UUIDFromProtoOrNil(resp.UserInfo.UserID).String()
+	ev := events.UserLoggedIn
+
+	events.Client().Enqueue(&analytics.Track{
+		UserId: userIDStr,
+		Event:  ev,
+	})
+
+	err = sendUserInfo(w, resp.UserInfo, resp.OrgInfo, resp.Token, resp.ExpiresAt, resp.UserCreated)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	return nil
 }
 
@@ -288,7 +457,6 @@ func AuthLogoutHandler(env commonenv.Env, w http.ResponseWriter, r *http.Request
 	session.Options.MaxAge = -1
 	session.Options.HttpOnly = true
 	session.Options.Secure = true
-	session.Options.SameSite = http.SameSiteStrictMode
 	session.Options.Domain = viper.GetString("domain_name")
 
 	err = session.Save(r, w)
@@ -312,14 +480,14 @@ func attachCredentialsToContext(env commonenv.Env, r *http.Request) (context.Con
 	return ctxWithCreds, nil
 }
 
-func setSessionCookie(session *sessions.Session, token string, expiresAt int64, r *http.Request, w http.ResponseWriter) {
+func setSessionCookie(session *sessions.Session, token string, expiresAt int64, r *http.Request, w http.ResponseWriter, cookieMode http.SameSite) {
 	// Set session cookie.
 	session.Values["_at"] = token
 	session.Values["_expires_at"] = expiresAt
 	session.Options.MaxAge = int(time.Until(time.Unix(expiresAt, 0)).Seconds())
 	session.Options.HttpOnly = true
 	session.Options.Secure = true
-	session.Options.SameSite = http.SameSiteStrictMode
+	session.Options.SameSite = cookieMode
 	session.Options.Domain = viper.GetString("domain_name")
 
 	err := session.Save(r, w)
@@ -347,13 +515,17 @@ func sendUserInfo(w http.ResponseWriter, userInfo *authpb.AuthenticatedUserInfo,
 
 	data.Token = token
 	data.ExpiresAt = expiresAt
-	data.UserInfo.UserID = utils.UUIDFromProtoOrNil(userInfo.UserID).String()
-	data.UserInfo.Email = userInfo.Email
-	data.UserInfo.FirstName = userInfo.FirstName
-	data.UserInfo.LastName = userInfo.LastName
+	if userInfo != nil {
+		data.UserInfo.UserID = utils.UUIDFromProtoOrNil(userInfo.UserID).String()
+		data.UserInfo.Email = userInfo.Email
+		data.UserInfo.FirstName = userInfo.FirstName
+		data.UserInfo.LastName = userInfo.LastName
+	}
 	data.UserCreated = userCreated
-	data.OrgInfo.OrgID = orgInfo.OrgID
-	data.OrgInfo.OrgName = orgInfo.OrgName
+	if orgInfo != nil {
+		data.OrgInfo.OrgID = orgInfo.OrgID
+		data.OrgInfo.OrgName = orgInfo.OrgName
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

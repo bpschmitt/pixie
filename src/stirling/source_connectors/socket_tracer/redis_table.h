@@ -48,17 +48,14 @@ static constexpr DataElement kRedisElements[] = {
          types::PatternType::GENERAL},
         canonical_data_elements::kLatencyNS,
 #ifndef NDEBUG
-        {"px_info_", "Pixie messages regarding the record (e.g. warnings)",
-         types::DataType::STRING,
-         types::SemanticType::ST_NONE,
-         types::PatternType::GENERAL},
+        canonical_data_elements::kPXInfo,
 #endif
 };
 // clang-format on
 
 static constexpr auto kRedisTable =
-    DataTableSchema("redis_events", "Redis request-response pair events", kRedisElements,
-                    std::chrono::milliseconds{100}, std::chrono::milliseconds{1000});
+    DataTableSchema("redis_events", "Redis request-response pair events", kRedisElements);
+DEFINE_PRINT_TABLE(Redis)
 
 constexpr int kRedisUPIDIdx = kRedisTable.ColIndex("upid");
 constexpr int kRedisCmdIdx = kRedisTable.ColIndex("req_cmd");

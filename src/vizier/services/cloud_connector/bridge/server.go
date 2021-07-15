@@ -147,9 +147,15 @@ type VizierInfo interface {
 	DeleteJob(string) error
 	GetJob(string) (*batchv1.Job, error)
 	GetClusterUID() (string, error)
+	GetClusterID() (string, error)
 	UpdateClusterID(string) error
 	GetVizierPodLogs(string, bool, string) (string, error)
 	GetVizierPods() ([]*vizierpb.VizierPodStatus, []*vizierpb.VizierPodStatus, error)
+}
+
+// VizierUpdater updates and fetches info about the Vizier CRD.
+type VizierUpdater interface {
+	UpdateCRDVizierVersion(string) error
 }
 
 // VizierHealthChecker is the interface that gets information on health of a Vizier.
@@ -166,6 +172,7 @@ type Bridge struct {
 
 	vzConnClient vzconnpb.VZConnServiceClient
 	vzInfo       VizierInfo
+	vzUpdater    VizierUpdater
 	vizChecker   VizierHealthChecker
 
 	hbSeqNum int64
@@ -201,7 +208,7 @@ type Bridge struct {
 }
 
 // New creates a cloud connector to cloud bridge.
-func New(vizierID uuid.UUID, jwtSigningKey string, deployKey string, sessionID int64, vzClient vzconnpb.VZConnServiceClient, vzInfo VizierInfo, nc *nats.Conn, checker VizierHealthChecker) *Bridge {
+func New(vizierID uuid.UUID, jwtSigningKey string, deployKey string, sessionID int64, vzClient vzconnpb.VZConnServiceClient, vzInfo VizierInfo, vzUpdater VizierUpdater, nc *nats.Conn, checker VizierHealthChecker) *Bridge {
 	return &Bridge{
 		vizierID:      vizierID,
 		jwtSigningKey: jwtSigningKey,
@@ -210,6 +217,7 @@ func New(vizierID uuid.UUID, jwtSigningKey string, deployKey string, sessionID i
 		vzConnClient:  vzClient,
 		vizChecker:    checker,
 		vzInfo:        vzInfo,
+		vzUpdater:     vzUpdater,
 		hbSeqNum:      0,
 		nc:            nc,
 		// Buffer NATS channels to make sure we don't back-pressure NATS
@@ -408,36 +416,44 @@ func (s *Bridge) handleUpdateMessage(msg *types.Any) error {
 		return err
 	}
 
-	job, err := s.vzInfo.ParseJobYAML(UpdaterJobYAML, map[string]string{"updater": pb.Version}, map[string]string{
-		"PL_VIZIER_VERSION": pb.Version,
-		"PL_REDEPLOY_ETCD":  fmt.Sprintf("%v", pb.RedeployEtcd),
-	})
-	if err != nil {
-		log.WithError(err).Error("Could not parse job")
-		return err
-	}
+	// If cluster is using operator-deployed version of Vizier, we should
+	// trigger the update through the CRD. Otherwise, we fallback to the
+	// update job.
+	err = s.vzUpdater.UpdateCRDVizierVersion(pb.Version)
+	if err == nil {
+		s.updateRunning.Store(true)
+	} else {
+		job, err := s.vzInfo.ParseJobYAML(UpdaterJobYAML, map[string]string{"updater": pb.Version}, map[string]string{
+			"PL_VIZIER_VERSION": pb.Version,
+			"PL_REDEPLOY_ETCD":  fmt.Sprintf("%v", pb.RedeployEtcd),
+		})
+		if err != nil {
+			log.WithError(err).Error("Could not parse job")
+			return err
+		}
 
-	err = s.vzInfo.CreateSecret("pl-update-job-secrets", map[string]string{
-		"cloud-token": pb.Token,
-	})
-	if err != nil {
-		log.WithError(err).Error("Failed to create job secrets")
-		return err
-	}
+		err = s.vzInfo.CreateSecret("pl-update-job-secrets", map[string]string{
+			"cloud-token": pb.Token,
+		})
+		if err != nil {
+			log.WithError(err).Error("Failed to create job secrets")
+			return err
+		}
 
-	_, err = s.vzInfo.LaunchJob(job)
-	if err != nil {
-		log.WithError(err).Error("Could not launch job")
-		return err
+		_, err = s.vzInfo.LaunchJob(job)
+		if err != nil {
+			log.WithError(err).Error("Could not launch job")
+			return err
+		}
+		// Set the update status to true while the update job is running.
+		s.updateRunning.Store(true)
+		// This goroutine waits for the update job to complete. When it does, it sets
+		// the updateRunning boolean to false. Normally, if the update has successfully completed,
+		// this goroutine won't actually complete because this cloudconnector instance should be
+		// replaced by a new cloudconnector instance. This case is here to handle when the
+		// update job has failed.
+		go s.WaitForUpdater()
 	}
-	// Set the update status to true while the update job is running.
-	s.updateRunning.Store(true)
-	// This goroutine waits for the update job to complete. When it does, it sets
-	// the updateRunning boolean to false. Normally, if the update has successfully completed,
-	// this goroutine won't actually complete because this cloudconnector instance should be
-	// replaced by a new cloudconnector instance. This case is here to handle when the
-	// update job has failed.
-	go s.WaitForUpdater()
 
 	// Send response message to indicate update job has started.
 	m := cvmsgspb.UpdateOrInstallVizierResponse{

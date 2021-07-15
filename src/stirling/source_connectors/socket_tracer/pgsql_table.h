@@ -45,17 +45,14 @@ static constexpr DataElement kPGSQLElements[] = {
          types::PatternType::GENERAL},
         canonical_data_elements::kLatencyNS,
 #ifndef NDEBUG
-        {"px_info_", "Pixie messages regarding the record (e.g. warnings)",
-         types::DataType::STRING,
-         types::SemanticType::ST_NONE,
-         types::PatternType::GENERAL},
+        canonical_data_elements::kPXInfo,
 #endif
 };
 // clang-format on
 
-static constexpr auto kPGSQLTable =
-    DataTableSchema("pgsql_events", "Postgres (pgsql) request-response pair events", kPGSQLElements,
-                    std::chrono::milliseconds{100}, std::chrono::milliseconds{1000});
+static constexpr auto kPGSQLTable = DataTableSchema(
+    "pgsql_events", "Postgres (pgsql) request-response pair events", kPGSQLElements);
+DEFINE_PRINT_TABLE(PGSQL)
 
 constexpr int kPGSQLUPIDIdx = kPGSQLTable.ColIndex("upid");
 constexpr int kPGSQLReqIdx = kPGSQLTable.ColIndex("req");

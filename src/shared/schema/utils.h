@@ -30,7 +30,7 @@ namespace px {
  * A relation and accompanying information such as names and ids.
  */
 struct RelationInfo {
-  RelationInfo() {}
+  RelationInfo() = default;
   RelationInfo(std::string name, uint64_t id, std::string desc,
                table_store::schema::Relation relation)
       : name(std::move(name)),
@@ -57,18 +57,10 @@ struct RelationInfo {
 };
 
 /**
- * Converts info class proto to a RelationInfo.
- * @param info_class_pb The info class proto.
- * @return RelationInfo.
- */
-RelationInfo ConvertInfoClassPBToRelationInfo(const stirling::stirlingpb::InfoClass& info_class_pb);
-
-/**
  * Converts a subscription proto to relation info vector.
  * @param subscribe_pb The subscription proto.
  * @return Relation vector.
  */
-std::vector<RelationInfo> ConvertSubscribePBToRelationInfo(
-    const stirling::stirlingpb::Subscribe& subscribe_pb);
+std::vector<RelationInfo> ConvertPublishPBToRelationInfo(const stirling::stirlingpb::Publish& pb);
 
 }  // namespace px

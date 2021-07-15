@@ -16,7 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { WidgetDisplay } from 'containers/live/vis';
+import { WidgetDisplay } from 'app/containers/live/vis';
 import {
   data as visData,
   Edge,
@@ -27,15 +27,15 @@ import {
 import * as React from 'react';
 import {
   makeStyles,
-  Theme,
   useTheme,
 } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
-import { useHistory } from 'react-router';
-import { ClusterContext } from 'common/cluster-context';
-import { Arguments } from 'utils/args-utils';
+import { useHistory } from 'react-router-dom';
+import { ClusterContext } from 'app/common/cluster-context';
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import { Arguments } from 'app/utils/args-utils';
 import Button from '@material-ui/core/Button';
-import { Relation, SemanticType } from 'types/generated/vizierapi_pb';
+import { Relation, SemanticType } from 'app/types/generated/vizierapi_pb';
 import {
   getGraphOptions, semTypeToShapeConfig, colInfoFromName, ColInfo,
 } from './graph-utils';
@@ -111,7 +111,7 @@ function getColorForEdge(col: ColInfo, val: number, thresholds: EdgeThresholds):
   return val > highThreshold ? 'high' : 'med';
 }
 
-export const Graph = (props: GraphProps) => {
+export const Graph: React.FC<GraphProps> = (props) => {
   const {
     dot, toCol, fromCol, data, propagatedArgs, edgeWeightColumn,
     nodeWeightColumn, edgeColorColumn, edgeThresholds, edgeHoverInfo, edgeLength, enableDefaultHierarchy,
@@ -127,19 +127,22 @@ export const Graph = (props: GraphProps) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [network, setNetwork] = React.useState<Network>(null);
   const [graph, setGraph] = React.useState<GraphData>(null);
+
+  const { embedState } = React.useContext(LiveRouteContext);
+
   const doubleClickCallback = React.useCallback((params?: any) => {
-    if (params.nodes.length > 0) {
+    if (params.nodes.length > 0 && !embedState.widget) {
       const nodeID = params.nodes[0];
       const semType = graph.idToSemType[nodeID];
       if (semType === SemanticType.ST_SERVICE_NAME
         || semType === SemanticType.ST_POD_NAME
         || semType === SemanticType.ST_NAMESPACE_NAME) {
         const page = toSingleEntityPage(nodeID, semType, selectedClusterName);
-        const pathname = toEntityURL(page, propagatedArgs);
+        const pathname = toEntityURL(page, embedState, propagatedArgs);
         history.push(pathname);
       }
     }
-  }, [graph, history, selectedClusterName]);
+  }, [history, selectedClusterName, graph, propagatedArgs, embedState]);
 
   const ref = React.useRef<HTMLDivElement>();
 
@@ -205,7 +208,7 @@ export const Graph = (props: GraphProps) => {
         let edgeInfo = '';
         edgeHoverInfo.forEach((info, i) => {
           if (info != null) {
-            let val = '';
+            let val: string;
             if (info.semType === SemanticType.ST_NONE || info.semType === SemanticType.ST_UNSPECIFIED) {
               val = formatByDataType(info.type, d[info.name]);
             } else {
@@ -224,6 +227,7 @@ export const Graph = (props: GraphProps) => {
     setGraph({
       nodes, edges, idToSemType,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dot, data, toCol, fromCol]);
 
   // Load the data.
@@ -269,20 +273,6 @@ export const Graph = (props: GraphProps) => {
       </div>
     </div>
   );
-};
-Graph.defaultProps = {
-  dot: null,
-  data: null,
-  toCol: null,
-  fromCol: null,
-  propagatedArgs: null,
-  edgeWeightColumn: '',
-  nodeWeightColumn: '',
-  edgeColorColumn: '',
-  edgeThresholds: null,
-  edgeHoverInfo: null,
-  edgeLength: 0,
-  enableDefaultHierarchy: false,
 };
 
 export const GraphWidget = (props: GraphWidgetProps): React.ReactElement => {

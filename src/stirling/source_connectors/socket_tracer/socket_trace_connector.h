@@ -48,6 +48,7 @@
 #include "src/stirling/utils/proc_tracker.h"
 
 DECLARE_uint32(stirling_conn_stats_sampling_ratio);
+DECLARE_bool(stirling_enable_periodic_bpf_map_cleanup);
 DECLARE_string(perf_buffer_events_output_path);
 DECLARE_bool(stirling_enable_http_tracing);
 DECLARE_bool(stirling_enable_http2_tracing);
@@ -78,7 +79,7 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   static constexpr uint32_t kDNSTableNum = TableNum(kTables, kDNSTable);
   static constexpr uint32_t kRedisTableNum = TableNum(kTables, kRedisTable);
 
-  static constexpr auto kSamplingPeriod = std::chrono::milliseconds{100};
+  static constexpr auto kSamplingPeriod = std::chrono::milliseconds{200};
   // TODO(yzhao): This is not used right now. Eventually use this to control data push frequency.
   static constexpr auto kPushPeriod = std::chrono::milliseconds{1000};
 
@@ -89,9 +90,7 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   Status InitImpl() override;
   Status StopImpl() override;
   void InitContextImpl(ConnectorContext* ctx) override;
-  void TransferDataImpl(ConnectorContext* ctx, uint32_t table_num, DataTable* data_table) override;
   void TransferDataImpl(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables) override;
-  bool output_multi_tables() const override;
 
   // Perform actions that are not specifically targeting a table.
   // For example, drain perf buffers, deploy new uprobes, and update socket info manager.
@@ -99,13 +98,6 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   // because TransferData() gets called for every table in the connector.
   // That would then cause performance overheads.
   void UpdateCommonState(ConnectorContext* ctx);
-
-  // A wrapper around UpdateCommonState that filters out calls to UpdateCommonState()
-  // if the state had already been updated for a different table.
-  // A second call to this function for any table will trigger a call to UpdateCommonState(),
-  // so this effectively means that UpdateCommonState() runs as frequently as the most frequently
-  // transferred table.
-  void CachedUpdateCommonState(ConnectorContext* ctx, uint32_t table_num);
 
   // Updates control map value for protocol, which specifies which role(s) to trace for the given
   // protocol's traffic.
@@ -126,7 +118,7 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
    *
    * @return Pointer to the ConnTracker, or error::NotFound if it does not exist.
    */
-  StatusOr<const ConnTracker*> GetConnTracker(uint32_t pid, uint32_t fd) const {
+  StatusOr<const ConnTracker*> GetConnTracker(uint32_t pid, int32_t fd) const {
     return conn_trackers_mgr_.GetConnTracker(pid, fd);
   }
 
@@ -137,6 +129,8 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   static void HandleDataEventLoss(void* cb_cookie, uint64_t lost);
   static void HandleControlEvent(void* cb_cookie, void* data, int data_size);
   static void HandleControlEventLoss(void* cb_cookie, uint64_t lost);
+  static void HandleConnStatsEvent(void* cb_cookie, void* data, int data_size);
+  static void HandleConnStatsEventLoss(void* cb_cookie, uint64_t lost);
   static void HandleMMapEvent(void* cb_cookie, void* data, int data_size);
   static void HandleMMapEventLoss(void* cb_cookie, uint64_t lost);
   static void HandleHTTP2HeaderEvent(void* cb_cookie, void* data, int data_size);
@@ -190,27 +184,47 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   //               (https://filippo.io/linux-syscall-table/), but are defined as SYSCALL_DEFINE4 in
   //               https://elixir.bootlin.com/linux/latest/source/net/socket.c.
 
+  // Assume a moderate network bandwidth peak of 100MiB/s across socket connections for data.
+  inline static constexpr int64_t kTargetDataBytesPerSec = 100 * 1024 * 1024;
+  inline static constexpr int64_t kTargetDataBufferSize =
+      kTargetDataBytesPerSec * kSamplingPeriod.count() / 1000;
+
+  // Assume a 5MiB/s across socket connections for control events.
+  inline static constexpr int64_t kTargetControlBytesPerSec = 5 * 1024 * 1024;
+  inline static constexpr int64_t kTargetControlBufferSize =
+      kTargetControlBytesPerSec * kSamplingPeriod.count() / 1000;
+
   inline static const auto kPerfBufferSpecs = MakeArray<bpf_tools::PerfBufferSpec>({
       // For data events. The order must be consistent with output tables.
-      {"socket_data_events", HandleDataEvent, HandleDataEventLoss},
+      {"socket_data_events", HandleDataEvent, HandleDataEventLoss, kTargetDataBufferSize},
       // For non-data events. Must not mix with the above perf buffers for data events.
-      {"socket_control_events", HandleControlEvent, HandleControlEventLoss},
-      {"mmap_events", HandleMMapEvent, HandleMMapEventLoss},
-      {"go_grpc_header_events", HandleHTTP2HeaderEvent, HandleHTTP2HeaderEventLoss},
-      {"go_grpc_data_events", HandleHTTP2Data, HandleHTTP2DataLoss},
+      {"socket_control_events", HandleControlEvent, HandleControlEventLoss,
+       kTargetControlBufferSize},
+      {"conn_stats_events", HandleConnStatsEvent, HandleConnStatsEventLoss,
+       kTargetControlBufferSize},
+      {"mmap_events", HandleMMapEvent, HandleMMapEventLoss, kTargetControlBufferSize},
+      {"go_grpc_header_events", HandleHTTP2HeaderEvent, HandleHTTP2HeaderEventLoss,
+       kTargetDataBufferSize / 10},
+      {"go_grpc_data_events", HandleHTTP2Data, HandleHTTP2DataLoss, kTargetDataBufferSize},
   });
 
   // Most HTTP servers support 8K headers, so we truncate after that.
   // https://stackoverflow.com/questions/686217/maximum-on-http-header-values
   inline static constexpr size_t kMaxHTTPHeadersBytes = 8192;
 
-  // Only sample the head of the body, to save space.
-  inline static constexpr size_t kMaxBodyBytes = 512;
-
   // Protobuf printer will limit strings to this length.
   inline static constexpr size_t kMaxPBStringLen = 64;
 
   explicit SocketTraceConnector(std::string_view source_name);
+
+  // Use this version of the clock, instead of CurrentTimeNS(), when generating a timestamp
+  // for comparison against BPF event timestamps. This is to make sure the clocks are generated
+  // in the exact same way.
+  uint64_t AdjustedSteadyClockNowNS() const {
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() +
+           ClockRealTimeOffset();
+  }
 
   // Initialize protocol_transfer_specs_.
   void InitProtocolTransferSpecs();
@@ -220,6 +234,7 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   // Events from BPF.
   void AcceptDataEvent(std::unique_ptr<SocketDataEvent> event);
   void AcceptControlEvent(socket_control_event_t event);
+  void AcceptConnStatsEvent(conn_stats_event_t event);
   void AcceptHTTP2Header(std::unique_ptr<HTTP2HeaderEvent> event);
   void AcceptHTTP2Data(std::unique_ptr<HTTP2DataEvent> event);
 
@@ -246,12 +261,13 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
 
   // Setups output file stream object writing to the input file path.
   void SetupOutput(const std::filesystem::path& file);
+
   // Writes data event to the specified output file.
   void WriteDataEvent(const SocketDataEvent& event);
 
   ConnTrackersManager conn_trackers_mgr_;
 
-  ConnStats connection_stats_;
+  ConnStats conn_stats_;
 
   absl::flat_hash_set<int> pids_to_trace_disable_;
 
@@ -269,14 +285,6 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   // The table num identifies which data the collected data is transferred.
   // The transfer_fn defines which function is called to process the data for transfer.
   std::vector<TransferSpec> protocol_transfer_specs_;
-
-  // Keep track of which tables have had data transferred via TransferData()
-  // since the last UpdateCommonState().
-  // Used as a performance optimization to avoid too many calls to UpdateCommonState().
-  // Essentially, we allow a TransferData() for one table to piggy-back on the UpdateCommonState()
-  // of another table.
-  // A bit being set means that the table in question should skip a call to UpdateCommonState().
-  std::bitset<kTables.size()> table_access_history_;
 
   // The time at which TransferDataImpl() begin. Used as a universal timestamp for the iteration,
   // to avoid too many calls to std::chrono::steady_clock::now().
@@ -304,6 +312,17 @@ class SocketTraceConnector : public SourceConnector, public bpf_tools::BCCWrappe
   std::shared_ptr<ConnInfoMapManager> conn_info_map_mgr_;
 
   UProbeManager uprobe_mgr_;
+
+  enum class StatKey {
+    kLossSocketDataEvent,
+    kLossSocketControlEvent,
+    kLossConnStatsEvent,
+    kLossMMapEvent,
+    kLossGoGRPCHeaderEvent,
+    kLossHTTP2Data,
+  };
+
+  utils::StatCounter<StatKey> stats_;
 
   FRIEND_TEST(SocketTraceConnectorTest, AppendNonContiguousEvents);
   FRIEND_TEST(SocketTraceConnectorTest, NoEvents);

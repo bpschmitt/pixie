@@ -27,6 +27,7 @@
 
 #include "src/common/base/base.h"
 #include "src/common/system/system.h"
+#include "src/shared/metadata/cgroup_path_resolver.h"
 #include "src/shared/metadata/k8s_objects.h"
 
 namespace px {
@@ -54,28 +55,11 @@ class CGroupMetadataReader : public NotCopyable {
                           absl::flat_hash_set<uint32_t>* pid_set) const;
 
  private:
-  void InitPathTemplates(std::string_view sysfs_path);
+  StatusOr<std::string> PodPath(PodQOSClass qos_class, std::string_view pod_id,
+                                std::string_view container_id, ContainerType container_type) const;
 
-  std::string CGroupPodDirPath(PodQOSClass qos_class, std::string_view pod_id) const;
-
-  std::string CGroupProcFilePath(PodQOSClass qos_class, std::string_view pod_id,
-                                 std::string_view container_id, ContainerType container_type) const;
-
-  std::string cgroup_kubepod_guaranteed_path_template_;
-  std::string cgroup_kubepod_besteffort_path_template_;
-  std::string cgroup_kubepod_burstable_path_template_;
-  std::string container_template_;
-  bool cgroup_kubepod_convert_dashes_;
-
-  std::string proc_stat_path_template_;
-  std::string proc_cmdline_path_template_;
-
-  int64_t ns_per_kernel_tick_;
-  int64_t clock_realtime_offset_;
-
-  FRIEND_TEST(CGroupMetadataReaderTest, cgroup_pod_dir_path);
-  FRIEND_TEST(CGroupMetadataReaderTest, cgroup_proc_file_path);
-  FRIEND_TEST(CGroupMetadataReaderTest, cgroup_proc_file_path_alternate);
+  std::unique_ptr<LegacyCGroupPathResolver> legacy_path_resolver_;
+  std::unique_ptr<CGroupPathResolver> path_resolver_;
 };
 
 }  // namespace md

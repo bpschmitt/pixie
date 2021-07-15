@@ -44,9 +44,8 @@ class ProcStatConnector : public SourceConnector {
        types::DataType::FLOAT64, types::SemanticType::ST_NONE, types::PatternType::METRIC_GAUGE}
   };
   // clang-format on
-  static constexpr auto kTable =
-      DataTableSchema("proc_stat", "CPU usage metrics for processes (obtained via /proc)",
-                      kElements, std::chrono::milliseconds{100}, std::chrono::milliseconds{1000});
+  static constexpr auto kTable = DataTableSchema(
+      "proc_stat", "CPU usage metrics for processes (obtained via /proc)", kElements);
 
   static constexpr auto kTables = MakeArray(kTable);
 
@@ -59,10 +58,6 @@ class ProcStatConnector : public SourceConnector {
  protected:
   explicit ProcStatConnector(std::string_view name) : SourceConnector(name, kTables) {}
   Status InitImpl() override;
-  void TransferDataImpl(ConnectorContext* ctx, uint32_t table_num, DataTable* data_table) override;
-  bool output_multi_tables() const override {
-    return FLAGS_stirling_source_connector_output_multiple_data_tables;
-  }
   void TransferDataImpl(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables) override;
 
   Status StopImpl() override { return Status::OK(); }

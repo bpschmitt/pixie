@@ -206,6 +206,10 @@ func (f *FakeVZInfo) GetClusterUID() (string, error) {
 	return "fake-uid", nil
 }
 
+func (f *FakeVZInfo) GetClusterID() (string, error) {
+	return "fake-id", nil
+}
+
 func (f *FakeVZInfo) UpdateClusterID(string) error {
 	return nil
 }
@@ -226,6 +230,12 @@ func (f *FakeVZInfo) GetVizierPods() ([]*vizierpb.VizierPodStatus, []*vizierpb.V
 		},
 	}
 	return fakeAgents, fakeControlPlane, nil
+}
+
+type FakeVZUpdater struct{}
+
+func (f *FakeVZUpdater) UpdateCRDVizierVersion(string) error {
+	return nil
 }
 
 type testState struct {
@@ -295,7 +305,7 @@ func TestNATSGRPCBridgeTest_CorrectRegistrationFlow(t *testing.T) {
 	ts.wg.Add(1)
 
 	sessionID := time.Now().UnixNano()
-	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), ts.nats, &FakeVZChecker{})
+	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), &FakeVZUpdater{}, ts.nats, &FakeVZChecker{})
 	defer b.Stop()
 	go b.RunStream()
 
@@ -331,7 +341,7 @@ func TestNATSGRPCBridgeTest_TestOutboundNATSMessage(t *testing.T) {
 	ts.wg.Add(1)
 
 	sessionID := time.Now().UnixNano()
-	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), ts.nats, &FakeVZChecker{})
+	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), &FakeVZUpdater{}, ts.nats, &FakeVZChecker{})
 	defer func() {
 		b.Stop()
 	}()
@@ -389,7 +399,7 @@ func TestNATSGRPCBridgeTest_TestInboundNATSMessage(t *testing.T) {
 	ts.wg.Add(1)
 
 	sessionID := time.Now().UnixNano()
-	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), ts.nats, &FakeVZChecker{})
+	b := bridge.New(ts.vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), &FakeVZUpdater{}, ts.nats, &FakeVZChecker{})
 	defer b.Stop()
 
 	go b.RunStream()
@@ -462,7 +472,7 @@ func TestNATSGRPCBridgeTest_TestRegisterDeployment(t *testing.T) {
 	vzID := uuid.FromStringOrNil("")
 
 	sessionID := time.Now().UnixNano()
-	b := bridge.New(vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), ts.nats, &FakeVZChecker{})
+	b := bridge.New(vzID, ts.jwt, "", sessionID, ts.vzClient, makeFakeVZInfo("foobar", 123), &FakeVZUpdater{}, ts.nats, &FakeVZChecker{})
 	defer b.Stop()
 
 	go b.RunStream()

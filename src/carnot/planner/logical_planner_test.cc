@@ -25,6 +25,7 @@
 
 #include <pypa/parser/parser.hh>
 
+#include "src/api/proto/uuidpb/uuid.pb.h"
 #include "src/carnot/planner/compiler/test_utils.h"
 #include "src/carnot/planner/distributed/distributed_planner.h"
 #include "src/carnot/planner/ir/ir_nodes.h"
@@ -100,15 +101,15 @@ import px
 t1 = px.DataFrame(table='http_events', start_time='-120s')
 
 t1['service'] = t1.ctx['service']
-t1['http_resp_latency_ms'] = t1['http_resp_latency_ns'] / 1.0E6
-t1['failure'] = t1['http_resp_status'] >= 400
+t1['http_resp_latency_ms'] = t1['resp_latency_ns'] / 1.0E6
+t1['failure'] = t1['resp_status'] >= 400
 t1['range_group'] = t1['time_'] - px.modulo(t1['time_'], 2000000000)
 t1['s'] = px.bin(t1['time_'],px.seconds(3))
 
 quantiles_agg = t1.groupby('service').agg(
   latency_quantiles=('http_resp_latency_ms', px.quantiles),
   errors=('failure', px.mean),
-  throughput_total=('http_resp_status', px.count),
+  throughput_total=('resp_status', px.count),
 )
 
 quantiles_agg['latency_p50'] = px.pluck(quantiles_agg['latency_quantiles'], 'p50')
@@ -118,7 +119,7 @@ quantiles_table = quantiles_agg[['service', 'latency_p50', 'latency_p90', 'laten
 
 # The Range aggregate to calcualte the requests per second.
 requests_agg = t1.groupby(['service', 'range_group']).agg(
-  requests_per_window=('http_resp_status', px.count),
+  requests_per_window=('resp_status', px.count),
 )
 
 rps_table = requests_agg.groupby('service').agg(rps=('requests_per_window',px.mean))
@@ -163,7 +164,7 @@ import px
 
 t1 = px.DataFrame(table='http_events', start_time='-300s')
 t1['service'] = t1.ctx['service']
-t1['http_resp_latency_ms'] = t1['http_resp_latency_ns'] / 1.0E6
+t1['http_resp_latency_ms'] = t1['resp_latency_ns'] / 1.0E6
 # edit this to increase/decrease window. Dont go lower than 1 second.
 t1['window1'] = px.bin(t1['time_'], px.seconds(10))
 t1['window2'] = px.bin(t1['time_'] + px.seconds(5), px.seconds(10))
@@ -364,14 +365,14 @@ dest_name = 'responder'
 ip = 'remote_addr'
 ###############################################################
 df = px.DataFrame(table='http_events', start_time='-2m')
-df.http_resp_latency_ms = df.http_resp_latency_ns / 1.0E6
+df.http_resp_latency_ms = df.resp_latency_ns / 1.0E6
 df = df[df['http_resp_latency_ms'] < 1000.0]
-df.failure = df.http_resp_status >= 400
+df.failure = df.resp_status >= 400
 df.timestamp = px.bin(df.time_, px.seconds(num_seconds))
 df[k8s_object] = df.ctx[k8s_object]
 filter_pods = px.contains(df[k8s_object], match_name)
-filter_out_conds = ((df.http_req_path != '/health' or not filter_health) and (
-    df.http_req_path != '/readyz' or not filter_readyz)) and (
+filter_out_conds = ((df.req_path != '/health' or not filter_health) and (
+    df.req_path != '/readyz' or not filter_readyz)) and (
     df[ip] != '-' or not filter_dash)
 
 filt_df = df[filter_out_conds]
@@ -379,7 +380,7 @@ qa = filt_df[filter_pods]
 qa = qa.groupby([k8s_object, 'timestamp']).agg(
     latency_quantiles=('http_resp_latency_ms', px.quantiles),
     error_rate_per_window=('failure', px.mean),
-    throughput_total=('http_resp_status', px.count),
+    throughput_total=('resp_status', px.count),
 )
 qa.latency_p50 = px.pluck_float64(qa.latency_quantiles, 'p50')
 qa.latency_p90 = px.pluck_float64(qa.latency_quantiles, 'p90')
@@ -576,11 +577,11 @@ max_num_records = 100
 # Implementation
 # ----------------------------------------------------------------
 df = px.DataFrame(table='http_events', select=['time_', 'upid', 'remote_addr', 'remote_port',
-                                               'http_req_method', 'http_req_path',
-                                               'http_resp_status', 'http_resp_message',
-                                               'http_resp_body',
-                                               'http_resp_latency_ns'], start_time=start_time)
-df2 = df.agg(c=('http_resp_body', px.count))
+                                               'req_method', 'req_path',
+                                               'resp_status', 'resp_message',
+                                               'resp_body',
+                                               'resp_latency_ns'], start_time=start_time)
+df2 = df.agg(c=('resp_body', px.count))
 px.display(df2)
 )pxl";
 TEST_F(LogicalPlannerTest, partial_agg) {
@@ -608,6 +609,114 @@ TEST_F(LogicalPlannerTest, pem_only_limit) {
   EXPECT_OK(plan_or_s);
   auto plan = plan_or_s.ConsumeValueOrDie();
   EXPECT_OK(plan->ToProto());
+}
+
+constexpr char kLimitFailing[] = R"pxl(
+import pxtrace
+import px
+
+
+# func Sum(l, r pb.Money) (pb.Money, error)
+@pxtrace.probe('github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/money.Sum')
+def probe_func():
+    return [{'l': pxtrace.ArgExpr('l')},
+            {'r': pxtrace.ArgExpr('r')},
+            {'result': pxtrace.RetExpr('$0')},
+            {'error': pxtrace.RetExpr('$1')},
+            {'latency': pxtrace.FunctionLatency()}]
+
+
+table_name = 'checkout_table1'
+trace_name = 'checkout_probe1'
+
+# Change to the Pod you want to trace.
+pod_name = 'online-boutique/checkoutservice'
+
+pxtrace.UpsertTracepoint(trace_name, table_name,
+                         probe_func,
+                         pxtrace.PodProcess(pod_name),
+                         ttl='10m')
+
+df = px.DataFrame(table_name)
+# nil interface have both 'tab' and 'data' being 0, which means the function finishes successfully.
+df_success = df[px.pluck(df.error, 'data') == '0']
+df_success.error = 'nil'
+px.display(df_success)
+
+df_failed = df[px.pluck(df.error, 'data') != '0']
+df_failed.error = px.pluck_int64(df.error, 'code')
+
+# Error code 13 means invalid value.
+df_failed_13 = df_failed[df_failed.error == 13]
+df_failed_13.error = "Invalid value"
+
+df_failed_other = df_failed[df_failed.error != 13]
+df_failed_other.error = "Other"
+
+df_failed_13
+# Concatenate 2 parts to form the full list.
+px.display(df_failed_13.append(df_failed_other))
+
+)pxl";
+
+constexpr char kCheckoutProbeTableSchema[] = R"proto(
+relation_map {
+  key: "checkout_table1"
+  value {
+    columns {
+      column_name: "time_"
+      column_type: TIME64NS
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "upid"
+      column_type: UINT128
+      column_semantic_type: ST_UPID
+    }
+    columns {
+      column_name: "goid_"
+      column_type: INT64
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "l"
+      column_type: STRING
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "r"
+      column_type: STRING
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "result"
+      column_type: STRING
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "error"
+      column_type: STRING
+      column_semantic_type: ST_NONE
+    }
+    columns {
+      column_name: "latency"
+      column_type: INT64
+      column_semantic_type: ST_NONE
+    }
+  }
+}
+)proto";
+TEST_F(LogicalPlannerTest, limit_pushdown_failing) {
+  auto planner = LogicalPlanner::Create(info_).ConsumeValueOrDie();
+  auto state = testutils::CreateTwoPEMsOneKelvinPlannerState(kCheckoutProbeTableSchema);
+  // Replicate what happens in the main environment.
+  state.mutable_plan_options()->set_max_output_rows_per_table(10000);
+
+  auto plan_or_s = planner->Plan(state, MakeQueryRequest(kLimitFailing));
+  EXPECT_OK(plan_or_s);
+  auto plan = plan_or_s.ConsumeValueOrDie();
+  auto proto_or_s = plan->ToProto();
+  ASSERT_OK(proto_or_s.status());
 }
 
 }  // namespace planner

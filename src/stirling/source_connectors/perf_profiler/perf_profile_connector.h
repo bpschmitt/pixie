@@ -29,9 +29,12 @@
 #include "src/stirling/core/source_connector.h"
 #include "src/stirling/core/types.h"
 #include "src/stirling/source_connectors/perf_profiler/bcc_bpf_intf/stack_event.h"
+#include "src/stirling/source_connectors/perf_profiler/stack_trace_id_cache.h"
 #include "src/stirling/source_connectors/perf_profiler/stack_traces_table.h"
 #include "src/stirling/source_connectors/perf_profiler/stringifier.h"
 #include "src/stirling/source_connectors/perf_profiler/symbolizer.h"
+#include "src/stirling/source_connectors/perf_profiler/types.h"
+#include "src/stirling/utils/stat_counter.h"
 
 namespace px {
 namespace stirling {
@@ -46,82 +49,56 @@ class PerfProfileConnector : public SourceConnector, public bpf_tools::BCCWrappe
   static constexpr auto kTables = MakeArray(kStackTraceTable);
   static constexpr uint32_t kPerfProfileTableNum = TableNum(kTables, kStackTraceTable);
 
+  // kBPFSamplingPeriod: the time interval in between stack trace samples.
+  static constexpr auto kBPFSamplingPeriod = std::chrono::milliseconds{11};
+
+  // Push period is set to 1/2 of the sample period such that we push each new
+  // sample when it becomes available. This is a UX decision so that the user
+  // gets fresh profiler data every 30 seconds (or worst case w/in 45 seconds).
+  static constexpr auto kSamplingPeriod = std::chrono::milliseconds{30000};
+  static constexpr auto kPushPeriod = std::chrono::milliseconds{15000};
+
   static std::unique_ptr<SourceConnector> Create(std::string_view name) {
     return std::unique_ptr<SourceConnector>(new PerfProfileConnector(name));
   }
 
   Status InitImpl() override;
   Status StopImpl() override;
-  void TransferDataImpl(ConnectorContext* ctx, uint32_t table_num, DataTable* data_table) override;
-  static constexpr uint64_t BPFSamplingPeriodMillis() { return kSamplingPeriodMillis; }
+  void TransferDataImpl(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables) override;
 
  private:
-  // SymbolicStackTrace identifies a particular stack trace by:
-  // * upid
-  // * "folded" stack trace string
-  // The stack traces (in kernel & in BPF) are ordered lists of instruction pointers (addresses).
-  // Stirling uses BPF to recover the symbols associated with each address, and then
-  // uses the "symbolic stack trace" as the histogram key. Some of the stack traces that are
-  // distinct in the kernel and in BPF will collapse into the same symoblic stack trace in Stirling.
-  // For example, consider the following two stack traces from BPF:
-  // p0, p1, p2 => main;qux;baz   # both p2 & p3 point into baz.
-  // p0, p1, p3 => main;qux;baz
-  //
-  // SymbolicStackTrace will serve as a key to the unique stack-trace-id (an integer) in Stirling.
-  struct SymbolicStackTrace {
-    const md::UPID upid;
-    const std::string stack_trace_str;
-
-    template <typename H>
-    friend H AbslHashValue(H h, const SymbolicStackTrace& s) {
-      return H::combine(std::move(h), s.upid, s.stack_trace_str);
-    }
-
-    friend bool operator==(const SymbolicStackTrace& lhs, const SymbolicStackTrace& rhs) {
-      if (lhs.upid != rhs.upid) {
-        return false;
-      }
-      return lhs.stack_trace_str == rhs.stack_trace_str;
-    }
-  };
-
   // StackTraceHisto: SymbolicStackTrace => observation-count
-  // StackTraceIDMap: SymbolicStackTrace => stack-trace-id
   using StackTraceHisto = absl::flat_hash_map<SymbolicStackTrace, uint64_t>;
-  using StackTraceIDMap = absl::flat_hash_map<SymbolicStackTrace, uint64_t>;
+
+  // RawHistoData: a list of stack trace keys that will need to be histogrammed.
+  using RawHistoData = std::vector<stack_trace_key_t>;
 
   explicit PerfProfileConnector(std::string_view source_name);
 
-  Status ProcessBPFStackTraces(ConnectorContext* ctx, DataTable* data_table);
+  void ProcessBPFStackTraces(ConnectorContext* ctx, DataTable* data_table);
 
   // Read BPF data structures, build & incorporate records to the table.
-  void CreateRecords(const uint64_t timestamp_ns, ebpf::BPFStackTable* stack_traces,
-                     ebpf::BPFHashTable<stack_trace_key_t, uint64_t>* histo, ConnectorContext* ctx,
+  void CreateRecords(ebpf::BPFStackTable* stack_traces, ConnectorContext* ctx,
                      DataTable* data_table);
 
-  uint64_t SymbolicStackTraceID(const SymbolicStackTrace& symbolic_stack_trace);
-
-  StackTraceHisto AggregateStackTraces(ConnectorContext* ctx, ebpf::BPFStackTable* stack_traces,
-                                       ebpf::BPFHashTable<stack_trace_key_t, uint64_t>* histo);
+  StackTraceHisto AggregateStackTraces(ConnectorContext* ctx, ebpf::BPFStackTable* stack_traces);
 
   void CleanupSymbolizers(const absl::flat_hash_set<md::UPID>& deleted_upids);
 
   // data structures shared with BPF:
   std::unique_ptr<ebpf::BPFStackTable> stack_traces_a_;
   std::unique_ptr<ebpf::BPFStackTable> stack_traces_b_;
-  std::unique_ptr<ebpf::BPFHashTable<stack_trace_key_t, uint64_t> > histogram_a_;
-  std::unique_ptr<ebpf::BPFHashTable<stack_trace_key_t, uint64_t> > histogram_b_;
-  std::unique_ptr<ebpf::BPFArrayTable<uint64_t> > profiler_state_;
 
-  // Number of read & clear ops completed:
-  uint64_t read_and_clear_count_ = 0;
+  std::unique_ptr<ebpf::BPFArrayTable<uint64_t>> profiler_state_;
 
-  // Tracks the next stack-trace-id to be assigned;
-  // incremented by 1 for each such assignment.
-  uint64_t next_stack_trace_id_ = 0;
+  // Number of iterations, where each iteration is drains the information collectid in BPF.
+  uint64_t transfer_count_ = 0;
 
   // Tracks unique stack trace ids, for the lifetime of Stirling:
-  StackTraceIDMap stack_trace_ids_;
+  StackTraceIDCache stack_trace_ids_;
+
+  // The raw histogram from BPF; it is populated on each iteration by a call to PollPerfBuffer().
+  RawHistoData raw_histo_data_;
 
   // The symbolizer has an instance of a BPF stack table (internally),
   // solely to gain access to the BCC symbolization API. Depending on the
@@ -133,15 +110,37 @@ class PerfProfileConnector : public SourceConnector, public bpf_tools::BCCWrappe
   // TODO(oazizi): Investigate ways of sharing across source_connectors.
   ProcTracker proc_tracker_;
 
-  // kSamplingPeriodMillis: the time interval in between stack trace samples.
-  // kTargetPushPeriodMillis: time interval between "push events".
-  // ... a push event is when the BPF perf-profiler probe notifies stirling (user space)
-  // that the shared maps are full and ready for consumption. After each push,
-  // the BPF side switches over to the other map set.
-  static constexpr uint64_t kSamplingPeriodMillis = 11;
-  static constexpr uint64_t kTargetPushPeriodMillis = 10 * 1000;
   static constexpr auto kProbeSpecs =
-      MakeArray<bpf_tools::SamplingProbeSpec>({"sample_call_stack", kSamplingPeriodMillis});
+      MakeArray<bpf_tools::SamplingProbeSpec>({"sample_call_stack", kBPFSamplingPeriod.count()});
+
+  static const uint32_t kExpectedStackTracesPerCPU =
+      IntRoundUpDivide(kSamplingPeriod.count(), kBPFSamplingPeriod.count());
+  static const uint32_t kMaxNCPUs = 128;
+  static const uint32_t kExpectedStackTraces = kMaxNCPUs * kExpectedStackTracesPerCPU;
+
+  // Overprovision:
+  static const uint32_t kNumPerfBufferEntries = 4 * kExpectedStackTraces;
+
+  static void HandleHistoEvent(void* cb_cookie, void* data, int /*data_size*/);
+  static void HandleHistoLoss(void* cb_cookie, uint64_t lost);
+
+  // Called by HandleHistoEvent() to add the stack-trace-key to raw_histo_data_.
+  void AcceptStackTraceKey(stack_trace_key_t* data);
+
+  inline static const auto kPerfBufferSpecs = MakeArray<bpf_tools::PerfBufferSpec>(
+      {{"histogram_a", HandleHistoEvent, HandleHistoLoss, kNumPerfBufferEntries},
+       {"histogram_b", HandleHistoEvent, HandleHistoLoss, kNumPerfBufferEntries}});
+
+  ebpf::BPFPerfBuffer* histogram_a_perf_buffer_;
+  ebpf::BPFPerfBuffer* histogram_b_perf_buffer_;
+
+  enum class StatKey {
+    kBPFMapSwitchoverEvent,
+    kCumulativeSumOfAllStackTraces,
+    kLossHistoEvent,
+  };
+
+  utils::StatCounter<StatKey> stats_;
 };
 
 }  // namespace stirling

@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/spf13/viper"
 	"google.golang.org/grpc/codes"
@@ -47,6 +49,11 @@ var (
 	ErrFetchAugmentedTokenFailedUnauthenticated = errors.New("failed to fetch token - unauthenticated")
 	// ErrParseAuthToken occurs when we are unable to parse the augmented token with the signing key.
 	ErrParseAuthToken = errors.New("Failed to parse token")
+	// ErrCSRFOriginCheckFailed occurs when a request with seesion cookie is missing the origin field, or is invalid.
+	ErrCSRFOriginCheckFailed = errors.New("CSRF check missing origin")
+	// TODO(zasgar): enable after we add this in the UI.
+	// ErrCSRFTokenCheckFailed csrf double submit cookie was missing.
+	// ErrCSRFTokenCheckFailed = errors.New("CSRF check missing token")
 )
 
 // GetTokenFromSession gets a token from the session store using cookies.
@@ -70,7 +77,8 @@ func WithAugmentedAuthMiddleware(env apienv.APIEnv, next http.Handler) http.Hand
 	f := func(w http.ResponseWriter, r *http.Request) {
 		ctx, err := getAugmentedAuthHTTP(env, r)
 		if err != nil {
-			if err == ErrFetchAugmentedTokenFailedUnauthenticated || err == ErrGetAuthTokenFailed {
+			if err == ErrFetchAugmentedTokenFailedUnauthenticated || err == ErrGetAuthTokenFailed ||
+				err == ErrCSRFOriginCheckFailed {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 			} else {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -83,6 +91,18 @@ func WithAugmentedAuthMiddleware(env apienv.APIEnv, next http.Handler) http.Hand
 }
 
 func getAugmentedToken(env apienv.APIEnv, r *http.Request) (string, error) {
+	referer, err := url.Parse(r.Referer())
+	if err != nil {
+		return "", err
+	}
+	// If referrer is set, force the origin check. This mitigates CSRF issues if the browser uses
+	// bearer auth.
+	if len(referer.Host) != 0 {
+		if !checkOrigin(referer) {
+			return "", ErrCSRFOriginCheckFailed
+		}
+	}
+
 	// Steps:
 	// 1. Check if header contains a pixie-api-key. If so, generate augmented auth from the API Key.
 	// 2. Try to get the token out of session.
@@ -125,15 +145,32 @@ func getAugmentedToken(env apienv.APIEnv, r *http.Request) (string, error) {
 		}
 	}
 
-	token, ok := GetTokenFromSession(env, r)
-	if !ok {
-		// Try to get it from bearer.
-		token, ok = httpmiddleware.GetTokenFromBearer(r)
-		if !ok {
-			return "", ErrGetAuthTokenFailed
+	// If the header "X-Use-Bearer is true we force the use of Bearer auth and ignore sessions.
+	// This is needed to prevent logged in pixie sessions to show up in embedded versions.
+	forceBearer := false
+	if strings.ToLower(r.Header.Get("X-Use-Bearer")) == "true" {
+		forceBearer = true
+	}
+	var token string
+	var ok bool
+
+	// Try to get it from bearer.
+	token, ok = httpmiddleware.GetTokenFromBearer(r)
+	if !ok && !forceBearer && len(token) == 0 {
+		// Try fallback session auth.
+		token, ok = GetTokenFromSession(env, r)
+		if ok {
+			// We need to validate origin.
+			if !checkOrigin(referer) {
+				return "", ErrCSRFOriginCheckFailed
+			}
 		}
 	}
 
+	if len(token) == 0 {
+		// No auth available.
+		return "", ErrFetchAugmentedTokenFailedUnauthenticated
+	}
 	// Make a request to the Auth service to get an augmented token.
 	// We don't need to check the token validity since the Auth service will just reject bad tokens.
 	req := &authpb.GetAugmentedAuthTokenRequest{
@@ -184,4 +221,30 @@ func GetAugmentedTokenGRPC(ctx context.Context, env apienv.APIEnv) (string, erro
 		}
 	}
 	return getAugmentedToken(env, r)
+}
+
+// sameOrigin returns true if URLs a and b share the same origin (but not subdomain). The same
+// origin is defined as host (which includes the port) and scheme.
+func sameOrigin(a, b *url.URL) bool {
+	aParts := strings.Split(a.Host, ".")
+	bParts := strings.Split(b.Host, ".")
+
+	if len(aParts) < 2 || len(bParts) < 2 {
+		return false
+	}
+
+	aHost := aParts[len(aParts)-2] + "." + aParts[len(aParts)-1]
+	bHost := bParts[len(bParts)-2] + "." + bParts[len(bParts)-1]
+
+	aHost = strings.Split(aHost, ":")[0]
+	bHost = strings.Split(bHost, ":")[0]
+	return (a.Scheme == b.Scheme && aHost == bHost)
+}
+
+func checkOrigin(a *url.URL) bool {
+	expectedHost := &url.URL{
+		Scheme: "https",
+		Host:   viper.GetString("domain_name"),
+	}
+	return sameOrigin(a, expectedHost)
 }

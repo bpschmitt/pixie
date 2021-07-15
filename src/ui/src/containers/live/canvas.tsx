@@ -19,37 +19,41 @@
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
-import { buildClass, Spinner } from '@pixie-labs/components';
-import { GraphDisplay, GraphWidget } from 'containers/live-widgets/graph/graph';
-import { RequestGraphDisplay, RequestGraphWidget } from 'containers/live-widgets/graph/request-graph';
-
-import { TimeSeriesContext, withTimeSeriesContextProvider } from 'containers/live-widgets/context/time-series-context';
-import { QueryResultTable } from 'containers/live-widgets/table/query-result-viewer';
-import * as React from 'react';
-import * as GridLayout from 'react-grid-layout';
-import { resizeEvent, triggerResize } from 'utils/resize';
-import { dataFromProto } from 'utils/result-data-utils';
-import { Alert, AlertTitle } from '@material-ui/lab';
-import { VizierErrorDetails } from 'common/errors';
-import { VizierQueryError, containsMutation } from '@pixie-labs/api';
+import { buildClass, Spinner } from 'app/components';
+import { GraphDisplay, GraphWidget } from 'app/containers/live-widgets/graph/graph';
+import { RequestGraphDisplay, RequestGraphWidget } from 'app/containers/live-widgets/graph/request-graph';
 
 import {
-  alpha, makeStyles, Theme, useTheme,
+  TimeSeriesContext, withTimeSeriesContextProvider,
+} from 'app/containers/live-widgets/context/time-series-context';
+import { QueryResultTableDisplay, QueryResultTable } from 'app/containers/live-widgets/table/query-result-viewer';
+import * as React from 'react';
+import * as GridLayout from 'react-grid-layout';
+import { resizeEvent, triggerResize } from 'app/utils/resize';
+import { dataFromProto } from 'app/utils/result-data-utils';
+import { Alert, AlertTitle } from '@material-ui/core';
+import { VizierQueryError } from 'app/api';
+import { containsMutation } from 'app/utils/pxl';
+import { VizierErrorDetails } from 'app/common/errors';
+
+import {
+  alpha, makeStyles, Theme,
 } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
 import Paper from '@material-ui/core/Paper';
 
-import Vega from 'containers/live-widgets/vega/vega';
-import { LayoutContext } from 'context/layout-context';
-import { ResultsContext } from 'context/results-context';
-import { ScriptContext } from 'context/script-context';
+import Vega from 'app/containers/live-widgets/vega/vega';
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import { LayoutContext } from 'app/context/layout-context';
+import { ResultsContext } from 'app/context/results-context';
+import { ScriptContext } from 'app/context/script-context';
 import MutationModal from './mutation-modal';
 import {
   addLayout, addTableLayout, getGridWidth, Layout, toLayout, updatePositions,
 } from './layout';
 import {
   DISPLAY_TYPE_KEY, GRAPH_DISPLAY_TYPE, REQUEST_GRAPH_DISPLAY_TYPE,
-  TABLE_DISPLAY_TYPE, widgetTableName,
+  TABLE_DISPLAY_TYPE, Vis, widgetTableName,
 } from './vis';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
@@ -167,7 +171,11 @@ const WidgetDisplay = ({
     return (
       <>
         <div className={classes.widgetTitle}>{widgetName}</div>
-        <QueryResultTable data={table} propagatedArgs={propagatedArgs} />
+        <QueryResultTable
+          display={display as QueryResultTableDisplay}
+          data={table}
+          propagatedArgs={propagatedArgs}
+        />
       </>
     );
   }
@@ -257,15 +265,15 @@ interface CanvasProps {
 
 const Canvas = (props: CanvasProps) => {
   const classes = useStyles();
-  const theme = useTheme();
   const {
     tables, loading, error, mutationInfo,
   } = React.useContext(ResultsContext);
   const {
-    args, vis, setVis, pxl,
+    args, setScriptAndArgs, script,
   } = React.useContext(ScriptContext);
   const { isMobile } = React.useContext(LayoutContext);
   const { setTimeseriesDomain } = React.useContext(TimeSeriesContext);
+  const { embedState: { widget } } = React.useContext(LiveRouteContext);
 
   // Default layout used when there is no vis defining widgets.
   const [defaultLayout, setDefaultLayout] = React.useState<Layout[]>([]);
@@ -295,12 +303,9 @@ const Canvas = (props: CanvasProps) => {
 
   // These are that we want to propagate to any downstream links in the data table
   // to other live views, such as start time.
-  const propagatedArgs = React.useMemo(() => {
-    if (args.start_time) {
-      return { start_time: args.start_time };
-    }
-    return null;
-  }, [args]);
+  const propagatedArgs = React.useMemo(() => ({
+    start_time: args.start_time,
+  }), [args]);
 
   React.useEffect(() => {
     const handler = (event) => {
@@ -313,12 +318,16 @@ const Canvas = (props: CanvasProps) => {
     return () => window.removeEventListener('resize', handler);
   }, [props.parentRef, setDefaultHeight]);
 
+  const setVis = React.useCallback(
+    (vis: Vis) => setScriptAndArgs({ ...script, vis }, args),
+    [args, script, setScriptAndArgs]);
+
   React.useEffect(() => {
-    const newVis = addLayout(vis);
-    if (newVis !== vis) {
+    const newVis = addLayout(script.vis);
+    if (newVis !== script.vis) {
       setVis(newVis);
     }
-  }, [vis, setVis]);
+  }, [script, setVis]);
 
   React.useEffect(() => {
     setTimeseriesDomain(null);
@@ -326,10 +335,13 @@ const Canvas = (props: CanvasProps) => {
 
   const updateLayoutInVis = React.useCallback((newLayout) => {
     if (!isMobile) {
-      setVis(updatePositions(vis, newLayout));
+      const newVis = updatePositions(script.vis, newLayout);
+      if (newVis !== script.vis) {
+        setVis(newVis);
+      }
     }
     triggerResize();
-  }, [vis, setVis, isMobile]);
+  }, [script?.vis, setVis, isMobile]);
 
   const updateDefaultLayout = React.useCallback((newLayout) => {
     setDefaultLayout(newLayout);
@@ -343,22 +355,28 @@ const Canvas = (props: CanvasProps) => {
     loading && classes.loading,
   );
 
-  const layout = React.useMemo(() => toLayout(vis.widgets, isMobile), [vis, isMobile]);
+  const layout = React.useMemo(() => toLayout(script.vis?.widgets, isMobile, widget),
+    [script.vis, isMobile, widget]);
   const [errorOpen, setErrorOpen] = React.useState(false);
 
   const emptyTableMsg = React.useMemo(() => {
-    if (containsMutation(pxl)) {
+    if (containsMutation(script.code)) {
       return 'Run to generate results';
     }
     return '';
-  }, [pxl]);
+  }, [script?.code]);
 
   const charts = React.useMemo(() => {
     const widgets = [];
-    vis.widgets.forEach((widget, i) => {
+    script.vis?.widgets.filter((currentWidget) => {
+      if (widget) {
+        return currentWidget.name === widget;
+      }
+      return true;
+    }).forEach((currentWidget, i) => {
       const widgetLayout = layout[i];
-      const display = widget.displaySpec;
-      const tableName = widgetTableName(widget, i);
+      const display = currentWidget.displaySpec;
+      const tableName = widgetTableName(currentWidget, i);
       const widgetName = widgetLayout.i;
       const table = tables[tableName];
 
@@ -386,10 +404,11 @@ const Canvas = (props: CanvasProps) => {
     });
     return widgets;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables, vis, loading, layout, className, classes.spinner, emptyTableMsg]);
+  }, [tables, script?.vis, widget, loading, layout, className, classes.spinner, emptyTableMsg]);
 
   if (loading && charts.length === 0) {
     return (
+      // TODO(philkuz) MutationModal is located here and below. Code smell.
       <>
         {loading && mutationInfo && <MutationModal mutationInfo={mutationInfo} />}
         <div className='center-content'><Spinner /></div>
@@ -416,7 +435,7 @@ const Canvas = (props: CanvasProps) => {
           Object.entries(tables).map(([tableName, table]) => (
             <Paper elevation={1} key={tableName} className={className}>
               <div className={classes.widgetTitle}>{tableName}</div>
-              <QueryResultTable data={table} propagatedArgs={propagatedArgs} />
+              <QueryResultTable display={{} as QueryResultTableDisplay} data={table} propagatedArgs={propagatedArgs} />
             </Paper>
           ))
         }

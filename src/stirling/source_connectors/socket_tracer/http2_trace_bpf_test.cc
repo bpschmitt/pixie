@@ -43,6 +43,7 @@ using ::px::stirling::testing::ToRecordVector;
 using ::testing::Gt;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 
 //-----------------------------------------------------------------------------
 // Test Stimulus: Server and Client
@@ -82,7 +83,7 @@ class HTTP2TraceTest : public testing::SocketTraceBPFTest</* TClientSideTracing 
     // Run the server.
     // The container runner will make sure it is in the ready state before unblocking.
     // Stirling will run after this unblocks, as part of SocketTraceBPFTest SetUp().
-    PL_CHECK_OK(server_.Run(60, {}));
+    PL_CHECK_OK(server_.Run(std::chrono::seconds{60}));
   }
 
   GRPCServerContainer server_;
@@ -90,14 +91,11 @@ class HTTP2TraceTest : public testing::SocketTraceBPFTest</* TClientSideTracing 
 };
 
 TEST_F(HTTP2TraceTest, Basic) {
-  // This test also checks conn_stats, so make sure we push records frequently.
-  FLAGS_stirling_conn_stats_sampling_ratio = 1;
-
   StartTransferDataThread();
 
   // Run the client in the network of the server, so they can connect to each other.
-  PL_CHECK_OK(
-      client_.Run(10, {absl::Substitute("--network=container:$0", server_.container_name())}));
+  PL_CHECK_OK(client_.Run(std::chrono::seconds{10},
+                          {absl::Substitute("--network=container:$0", server_.container_name())}));
   client_.Wait();
 
   StopTransferDataThread();
@@ -140,32 +138,6 @@ TEST_F(HTTP2TraceTest, Basic) {
 
     EXPECT_THAT(FindRecordIdxMatchesPID(rb, kHTTPUPIDIdx, client_.process_pid()), IsEmpty());
   }
-
-  {
-    std::vector<TaggedRecordBatch> tablets =
-        ConsumeRecords(SocketTraceConnector::kConnStatsTableNum);
-    ASSERT_FALSE(tablets.empty());
-
-    const types::ColumnWrapperRecordBatch& rb = tablets[0].records;
-
-    auto indices = FindRecordIdxMatchesPID(rb, conn_stats_idx::kUPID, server_.process_pid());
-    ASSERT_THAT(indices, SizeIs(1));
-
-    int conn_open =
-        AccessRecordBatch<types::Int64Value>(rb, conn_stats_idx::kConnOpen, indices[0]).val;
-    int conn_close =
-        AccessRecordBatch<types::Int64Value>(rb, conn_stats_idx::kConnClose, indices[0]).val;
-    int bytes_sent =
-        AccessRecordBatch<types::Int64Value>(rb, conn_stats_idx::kBytesSent, indices[0]).val;
-    int bytes_rcvd =
-        AccessRecordBatch<types::Int64Value>(rb, conn_stats_idx::kBytesRecv, indices[0]).val;
-    EXPECT_THAT(conn_open, 1);
-    // TODO(oazizi/yzhao): Causing flakiness. Investigate.
-    // EXPECT_THAT(conn_close, 1);
-    PL_UNUSED(conn_close);
-    EXPECT_THAT(bytes_sent, Gt(1800));
-    EXPECT_THAT(bytes_rcvd, Gt(600));
-  }
 }
 
 class ProductCatalogService : public ContainerRunner {
@@ -200,7 +172,7 @@ class ProductCatalogServiceTraceTest
     // The container runner will make sure it is in the ready state before unblocking.
     // Stirling will run after this unblocks, as part of SocketTraceBPFTest SetUp().
     // Note that this step will make an access to docker hub to download the HTTP image.
-    PL_CHECK_OK(server_.Run(60, {}));
+    PL_CHECK_OK(server_.Run(std::chrono::seconds{60}));
   }
 
   ProductCatalogService server_;
@@ -211,8 +183,8 @@ TEST_F(ProductCatalogServiceTraceTest, Basic) {
   StartTransferDataThread();
 
   // Run the client in the network of the server, so they can connect to each other.
-  PL_CHECK_OK(
-      client_.Run(10, {absl::Substitute("--network=container:$0", server_.container_name())}));
+  PL_CHECK_OK(client_.Run(std::chrono::seconds{10},
+                          {absl::Substitute("--network=container:$0", server_.container_name())}));
   client_.Wait();
 
   StopTransferDataThread();
@@ -222,27 +194,25 @@ TEST_F(ProductCatalogServiceTraceTest, Basic) {
   ASSERT_FALSE(tablets.empty());
   const types::ColumnWrapperRecordBatch& rb = tablets[0].records;
 
+  const std::vector<size_t> target_record_indices =
+      FindRecordIdxMatchesPID(rb, kHTTPUPIDIdx, server_.process_pid());
+
+  std::vector<size_t> req_body_sizes;
+  std::vector<size_t> resp_body_sizes;
+
+  for (const auto& idx : target_record_indices) {
+    req_body_sizes.push_back(
+        AccessRecordBatch<types::Int64Value>(rb, kHTTPReqBodySizeIdx, idx).val);
+    resp_body_sizes.push_back(
+        AccessRecordBatch<types::Int64Value>(rb, kHTTPRespBodySizeIdx, idx).val);
+  }
+  EXPECT_THAT(req_body_sizes, UnorderedElementsAre(5, 17, 17));
+  EXPECT_THAT(resp_body_sizes, UnorderedElementsAre(147, 150, 1439));
+
   {
-    const std::vector<size_t> target_record_indices =
-        FindRecordIdxMatchesPID(rb, kHTTPUPIDIdx, server_.process_pid());
-
-    // For Debug:
-    for (const auto& idx : target_record_indices) {
-      uint32_t pid = rb[kHTTPUPIDIdx]->Get<types::UInt128Value>(idx).High64();
-      std::string req_path = rb[kHTTPReqPathIdx]->Get<types::StringValue>(idx);
-      std::string req_method = rb[kHTTPReqMethodIdx]->Get<types::StringValue>(idx);
-      std::string req_body = rb[kHTTPReqBodyIdx]->Get<types::StringValue>(idx);
-
-      int resp_status = rb[kHTTPRespStatusIdx]->Get<types::Int64Value>(idx).val;
-      std::string resp_message = rb[kHTTPRespMessageIdx]->Get<types::StringValue>(idx);
-      std::string resp_body = rb[kHTTPRespBodyIdx]->Get<types::StringValue>(idx);
-      LOG(INFO) << absl::Substitute("$0 $1 $2 $3 $4 $5 $6", pid, req_method, req_path, req_body,
-                                    resp_status, resp_message, resp_body);
-    }
-
     std::vector<http::Record> records = ToRecordVector(rb, target_record_indices);
 
-    EXPECT_EQ(records.size(), 3);
+    EXPECT_THAT(records, SizeIs(3));
 
     http::Record expected_record1 = {};
     expected_record1.req.req_path = "/hipstershop.ProductCatalogService/ListProducts";
@@ -250,6 +220,10 @@ TEST_F(ProductCatalogServiceTraceTest, Basic) {
     expected_record1.req.body = R"()";
     expected_record1.resp.resp_status = 200;
     expected_record1.resp.resp_message = "OK";
+
+    // Note that the truncation is applied in 2 places below:
+    // 1. Inside string parsing, where the field #1 has a string truncated.
+    // 2. The whole message was truncated as well.
     expected_record1.resp.body = R"(1 {
   1: "OLJCESPC7Z"
   2: "Vintage Typewriter"
@@ -277,7 +251,16 @@ TEST_F(ProductCatalogServiceTraceTest, Basic) {
 }
 1 {
   1: "1YMWWN1N4O"
-  2: "H... [TRUNCATED])";
+  2: "Home Barista Kit"
+  3: "Always wanted to brew coffee with Chemex and Aeropress at home?"
+  4: "/static/img/products/barista-kit.jpg"
+  5 {
+    1: "USD"
+    2: 124
+  }
+  6: "cookware"
+}
+1: "\n\nL9ECAV7KIM\022\tTerrari"... [TRUNCATED])";
 
     http::Record expected_record2 = {};
     expected_record2.req.req_path = "/hipstershop.ProductCatalogService/GetProduct";

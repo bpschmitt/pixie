@@ -84,6 +84,11 @@ func main() {
 		log.WithError(err).Fatal("Failed to init profile client")
 	}
 
+	cm, err := apienv.NewConfigManagerServiceClient()
+	if err != nil {
+		log.WithError(err).Fatal("Failed to init config manager client")
+	}
+
 	vc, vk, err := apienv.NewVZMgrServiceClients()
 	if err != nil {
 		log.WithError(err).Fatal("Failed to init vzmgr clients")
@@ -104,7 +109,7 @@ func main() {
 		log.WithError(err).Fatal("Failed to init Hydra + Kratos idprovider client")
 	}
 
-	env, err := apienv.New(ac, pc, vk, ak, vc, at, oa)
+	env, err := apienv.New(ac, pc, vk, ak, vc, at, oa, cm)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to create api environment")
 	}
@@ -135,6 +140,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/api/auth/signup", handler.New(env, controller.AuthSignupHandler))
 	mux.Handle("/api/auth/login", handler.New(env, controller.AuthLoginHandler))
+	mux.Handle("/api/auth/loginEmbed", handler.New(env, controller.AuthLoginEmbedHandler))
+	mux.Handle("/api/auth/loginEmbedNew", handler.New(env, controller.AuthLoginHandlerEmbedNew))
 	mux.Handle("/api/auth/logout", handler.New(env, controller.AuthLogoutHandler))
 	mux.Handle("/api/auth/oauth/login", handler.New(env, controller.AuthOAuthLoginHandler))
 	// This is an unauthenticated path that will check and validate if a particular domain
@@ -240,6 +247,15 @@ func main() {
 	profileServer := &controller.ProfileServer{ProfileServiceClient: pc}
 	cloudpb.RegisterProfileServiceServer(s.GRPCServer(), profileServer)
 
+	os := &controller.OrganizationServiceServer{ProfileServiceClient: pc, AuthServiceClient: ac}
+	cloudpb.RegisterOrganizationServiceServer(s.GRPCServer(), os)
+
+	us := &controller.UserServiceServer{ProfileServiceClient: pc}
+	cloudpb.RegisterUserServiceServer(s.GRPCServer(), us)
+
+	cs := &controller.ConfigServiceServer{}
+	cloudpb.RegisterConfigServiceServer(s.GRPCServer(), cs)
+
 	gqlEnv := controller.GraphQLEnv{
 		ArtifactTrackerServer: artifactTrackerServer,
 		VizierClusterInfo:     cis,
@@ -247,8 +263,8 @@ func main() {
 		APIKeyMgr:             aks,
 		ScriptMgrServer:       sms,
 		AutocompleteServer:    as,
-		OrgServer:             profileServer,
-		ProfileServiceClient:  pc,
+		OrgServer:             os,
+		UserServer:            us,
 	}
 
 	mux.Handle("/api/graphql", controller.WithAugmentedAuthMiddleware(env, controller.NewGraphQLHandler(gqlEnv)))

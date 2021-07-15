@@ -16,13 +16,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { render } from 'enzyme';
+// This ignore shouldn't be necessary because it is ignored in eslintrc.json but
+// that seems to not work at the moment.
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { waitFor, render } from '@testing-library/react';
 import * as React from 'react';
-import { MockLiveContextProvider } from 'testing/mocks/live-context-mock';
+import { ThemeProvider } from '@material-ui/core/styles';
+import { DARK_THEME } from 'app/components';
+import { MockClusterContextProvider } from 'app/testing/mocks/cluster-context-mock';
+import { MockLiveRouteContextProvider } from 'app/testing/mocks/live-routing-mock';
+import { MockScriptContextProvider } from 'app/testing/mocks/script-context-mock';
+import { MockScriptsContextProvider } from 'app/testing/mocks/scripts-context-mock';
 import LiveViewBreadcrumbs from './breadcrumbs';
 
 describe('Live view breadcrumbs', () => {
-  it('renders', () => {
-    render(<MockLiveContextProvider><LiveViewBreadcrumbs /></MockLiveContextProvider>);
+  it('renders', async () => {
+    render(
+      <ThemeProvider theme={DARK_THEME}>
+        <MockClusterContextProvider>
+          <MockScriptsContextProvider>
+            <MockLiveRouteContextProvider>
+              <MockScriptContextProvider>
+                <LiveViewBreadcrumbs />
+              </MockScriptContextProvider>
+            </MockLiveRouteContextProvider>
+          </MockScriptsContextProvider>
+        </MockClusterContextProvider>
+      </ThemeProvider>,
+    );
+    await waitFor(() => {}); // So that useEffect can settle down (otherwise we get "use act()" complaints)
   });
 });

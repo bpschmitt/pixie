@@ -16,7 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ResultsContext } from 'context/results-context';
+import { ResultsContext } from 'app/context/results-context';
 import * as numeral from 'numeral';
 import * as React from 'react';
 
@@ -72,7 +72,7 @@ const ExecutionMetric = (props: ExecutionMetricProps) => {
   );
 };
 
-const ExecutionStats = () => {
+const ExecutionStats: React.FC = () => {
   const { stats } = React.useContext(ResultsContext);
   const classes = useStyles();
 

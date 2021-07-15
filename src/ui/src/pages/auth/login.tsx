@@ -17,7 +17,7 @@
  */
 
 import * as React from 'react';
-import { AuthBox } from '@pixie-labs/components';
+import { AuthBox } from 'app/components';
 import { BasePage } from './base';
 import { GetOAuthProvider } from './utils';
 

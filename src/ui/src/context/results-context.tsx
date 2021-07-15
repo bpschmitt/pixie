@@ -16,9 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { VizierTable as Table } from '@pixie-labs/api';
 import * as React from 'react';
-import { QueryExecutionStats, MutationInfo } from 'types/generated/vizierapi_pb';
+import { Table } from 'app/api';
+import { QueryExecutionStats, MutationInfo } from 'app/types/generated/vizierapi_pb';
 
 import { SetStateFunc } from './common';
 

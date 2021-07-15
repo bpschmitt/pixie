@@ -29,8 +29,8 @@ namespace px {
 namespace stirling {
 
 Status PIDRuntimeConnector::InitImpl() {
-  sample_push_freq_mgr_.set_sampling_period(kSamplingPeriod);
-  sample_push_freq_mgr_.set_push_period(kPushPeriod);
+  sampling_freq_mgr_.set_period(kSamplingPeriod);
+  push_freq_mgr_.set_period(kPushPeriod);
   PL_RETURN_IF_ERROR(InitBPFProgram(pidruntime_bcc_script));
   PL_RETURN_IF_ERROR(AttachSamplingProbes(kSamplingProbes));
   return Status::OK();
@@ -41,10 +41,14 @@ Status PIDRuntimeConnector::StopImpl() {
   return Status::OK();
 }
 
-void PIDRuntimeConnector::TransferDataImpl(ConnectorContext* /* ctx */, uint32_t table_num,
-                                           DataTable* data_table) {
-  DCHECK_LT(table_num, kTables.size())
-      << absl::Substitute("Trying to access unexpected table: table_num=$0", table_num);
+void PIDRuntimeConnector::TransferDataImpl(ConnectorContext* /* ctx */,
+                                           const std::vector<DataTable*>& data_tables) {
+  DCHECK_EQ(data_tables.size(), 1);
+  DataTable* data_table = data_tables[0];
+
+  if (data_table == nullptr) {
+    return;
+  }
 
   std::vector<std::pair<uint16_t, pidruntime_val_t>> items =
       GetHashTable<uint16_t, pidruntime_val_t>("pid_cpu_time").get_table_offline();
@@ -71,18 +75,6 @@ void PIDRuntimeConnector::TransferDataImpl(ConnectorContext* /* ctx */, uint32_t
 
     prev_run_time_map_[item.first] = item.second.run_time;
   }
-}
-
-void PIDRuntimeConnector::TransferDataImpl(ConnectorContext* /* ctx */,
-                                           const std::vector<DataTable*>& data_tables) {
-  DCHECK_EQ(data_tables.size(), 1);
-  DataTable* data_table = data_tables[0];
-
-  if (data_table == nullptr) {
-    return;
-  }
-
-  TransferDataImpl(nullptr, 0, data_table);
 }
 
 }  // namespace stirling

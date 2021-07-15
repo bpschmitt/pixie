@@ -18,6 +18,7 @@
 
 import * as React from 'react';
 import AppBar from '@material-ui/core/AppBar';
+import { buildClass } from 'app/utils/build-class';
 
 import Toolbar from '@material-ui/core/Toolbar';
 import IconButton from '@material-ui/core/IconButton';
@@ -29,19 +30,20 @@ import { createStyles } from '@material-ui/styles';
 import {
   Avatar, ProfileMenuWrapper, CodeIcon,
   LogoutIcon, SettingsIcon,
-  PixieLogo,
-} from '@pixie-labs/components';
-import { useSetting, useUserInfo } from '@pixie-labs/api-react';
-import { LiveShortcutsContext } from 'containers/live/shortcuts';
-import { SidebarContext } from 'context/sidebar-context';
-import { LiveTourContext, LiveTourDialog } from 'containers/App/live-tour';
+} from 'app/components';
+import { useQuery, useMutation, gql } from '@apollo/client';
+import { LiveShortcutsContext } from 'app/containers/live/shortcuts';
+import { SidebarContext } from 'app/context/sidebar-context';
+import { LiveTourContext, LiveTourDialog } from 'app/containers/App/live-tour';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
-import { LayoutContext } from 'context/layout-context';
+import { LayoutContext } from 'app/context/layout-context';
 import MenuItem from '@material-ui/core/MenuItem';
 import ExploreIcon from '@material-ui/icons/Explore';
 import KeyboardIcon from '@material-ui/icons/Keyboard';
 import { Link } from 'react-router-dom';
+import { Logo } from 'configurable/logo';
+import { GQLUserInfo, GQLUserAttributes } from 'app/types/schema';
 
 const StyledListItemText = withStyles((theme: Theme) => createStyles({
   primary: {
@@ -56,17 +58,55 @@ const StyledListItemIcon = withStyles(() => createStyles({
 }))(ListItemIcon);
 
 const ProfileItem = ({
-  classes, userInfo, setSidebarOpen,
+  classes, setSidebarOpen,
 }) => {
   const [open, setOpen] = React.useState<boolean>(false);
   const { setTourOpen } = React.useContext(LiveTourContext);
-  const [tourSeen, setTourSeen, loadingTourSeen] = useSetting('tourSeen');
   const [wasSidebarOpenBeforeTour, setWasSidebarOpenBeforeTour] = React.useState<boolean>(false);
   const [wasDrawerOpenBeforeTour, setWasDrawerOpenBeforeTour] = React.useState<boolean>(false);
   const { setDataDrawerOpen } = React.useContext(LayoutContext) ?? { setDataDrawerOpen: () => {} };
   const [anchorEl, setAnchorEl] = React.useState(null);
   const shortcuts = React.useContext(LiveShortcutsContext);
   const { inLiveView } = React.useContext(SidebarContext);
+
+  const { data } = useQuery<{
+    user: Pick<GQLUserInfo, 'name' | 'picture' | 'id' | 'email' >,
+  }>(gql`
+    query userForProfileMenu{
+      user {
+        id
+        name
+        email
+        picture
+      }
+    }
+  `, {});
+  const userInfo = data?.user;
+  const isSupportUser = data?.user?.email.split('@')[1] === 'pixie.support';
+
+  const { data: dataSettings, loading: loadingTourSeen } = useQuery<{
+    userAttributes: GQLUserAttributes,
+  }>(gql`
+    query getTourSeen{
+      userAttributes {
+        tourSeen
+        id
+      }
+    }
+  `, {});
+  const tourSeen = isSupportUser
+    || (dataSettings?.userAttributes?.tourSeen);
+
+  const [setTourSeen] = useMutation<
+  { SetUserAttributes: GQLUserAttributes }, void
+  >(gql`
+    mutation updateTourSeen{
+      SetUserAttributes(attributes: { tourSeen: true }) {
+        tourSeen
+        id
+      }
+    }
+  `);
 
   const openMenu = React.useCallback((event) => {
     setOpen(true);
@@ -99,7 +139,7 @@ const ProfileItem = ({
   React.useEffect(() => {
     if (!loadingTourSeen && tourSeen !== true && inLiveView) {
       openTour();
-      setTourSeen(true);
+      setTourSeen();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingTourSeen, tourSeen, inLiveView]);
@@ -127,7 +167,7 @@ const ProfileItem = ({
         <Avatar
           name={name}
           picture={picture}
-          className={classes.avatarSm}
+          className={buildClass(classes.avatarSm, classes.clickable)}
         />
       </div>
       <ProfileMenuWrapper
@@ -150,7 +190,7 @@ const ProfileItem = ({
           inLiveView && (
             [
               (
-                <MenuItem key='tour' button component='button' onClick={openTour} className={classes.hideOnMobile}>
+                <MenuItem key='tour' button component='a' onClick={openTour} className={classes.hideOnMobile}>
                   <StyledListItemIcon>
                     <ExploreIcon />
                   </StyledListItemIcon>
@@ -158,7 +198,7 @@ const ProfileItem = ({
                 </MenuItem>
               ),
               (
-                <MenuItem key='shortcuts' button component='button' onClick={() => shortcuts['show-help'].handler()}>
+                <MenuItem key='shortcuts' button component='a' onClick={() => shortcuts['show-help'].handler()}>
                   <StyledListItemIcon>
                     <KeyboardIcon />
                   </StyledListItemIcon>
@@ -186,47 +226,48 @@ const ProfileItem = ({
 };
 
 const TopBarImpl = ({
-  classes, children, toggleSidebar,
-}) => {
-  const [{ user: userInfo }] = useUserInfo();
-
-  return (
-    <AppBar className={classes.container} position='static'>
-      <Toolbar>
-        <IconButton edge='start' color='inherit' aria-label='menu' sx={{ mr: 2 }} onClick={toggleSidebar}>
-          <MenuIcon className={classes.menu} />
-        </IconButton>
-        <PixieLogo className={classes.logo} />
-        <div className={classes.contents}>
-          { children }
-        </div>
-        <ProfileItem classes={classes} userInfo={userInfo} setSidebarOpen={toggleSidebar} />
-      </Toolbar>
-    </AppBar>
-  );
-};
+  classes, children, toggleSidebar, setSidebarOpen,
+}) => (
+  <AppBar className={classes.container} position='static'>
+    <Toolbar>
+      <IconButton edge='start' color='inherit' aria-label='menu' sx={{ mr: 2 }} onClick={toggleSidebar}>
+        <MenuIcon className={classes.menu} />
+      </IconButton>
+      <Link to='/'><Logo /></Link>
+      <div className={classes.contents}>
+        { children }
+      </div>
+      <ProfileItem classes={classes} setSidebarOpen={setSidebarOpen} />
+    </Toolbar>
+  </AppBar>
+);
 
 export const TopBar = withStyles((theme: Theme) => createStyles({
   container: {
     zIndex: 1300,
     backgroundColor: theme.palette.background.paper,
   },
-  logo: {
-    width: theme.spacing(8),
-    color: theme.palette.foreground.three,
-  },
   contents: {
     display: 'flex',
     flex: 1,
+    paddingRight: theme.spacing(4),
+    paddingLeft: theme.spacing(4),
+    height: '100%',
+    alignItems: 'center',
   },
   menu: {
-    color: theme.palette.common.white,
+    color: theme.palette.text.secondary,
+  },
+  clickable: {
+    cursor: 'pointer',
   },
   avatarSm: {
     backgroundColor: theme.palette.primary.main,
-    width: theme.spacing(5),
-    height: theme.spacing(5),
+    width: theme.spacing(4),
+    height: theme.spacing(4),
     alignItems: 'center',
-    cursor: 'pointer',
+  },
+  centeredListItemText: {
+    paddingLeft: theme.spacing(1),
   },
 }))(TopBarImpl);

@@ -19,9 +19,9 @@
 import * as React from 'react';
 import * as QueryString from 'query-string';
 import Axios, { AxiosError } from 'axios';
-import * as RedirectUtils from 'utils/redirect-utils';
-import { isValidAnalytics } from 'utils/env';
-import { AuthMessageBox } from '@pixie-labs/components';
+import * as RedirectUtils from 'app/utils/redirect-utils';
+import { isValidAnalytics } from 'app/utils/env';
+import { AuthMessageBox } from 'app/components';
 import { Link } from 'react-router-dom';
 import {
   Button, ButtonProps, makeStyles, Theme,
@@ -73,14 +73,11 @@ const CtaButton = ({ children, ...props }: ButtonProps) => (
   <Button color='primary' variant='contained' {...props}>{children}</Button>
 );
 
-const trackAuthEvent = (event: string, id: string, email: string) => {
+const trackAuthEvent = (event: string, id: string, email: string): Promise<void> => {
   if (isValidAnalytics()) {
     return Promise.race([
-      new Promise((resolve, reject) => { // Wait for analytics to be sent out before redirecting.
-        analytics.track(event, (err) => {
-          if (err) {
-            reject();
-          }
+      new Promise<void>((resolve) => { // Wait for analytics to be sent out before redirecting.
+        analytics.track(event, () => {
           analytics.identify(id, { email }, {}, () => {
             resolve();
           });
@@ -89,7 +86,7 @@ const trackAuthEvent = (event: string, id: string, email: string) => {
       // Wait a maximum of 4s before redirecting. If it takes this long, it probably means that
       // something in Segment failed to initialize/send.
       new Promise((resolve) => setTimeout(resolve, 4000)),
-    ]);
+    ]).then();
   }
 
   return Promise.resolve();
@@ -124,34 +121,37 @@ export const AuthCallbackPage: React.FC = () => {
     }
   };
 
-  const performSignup = async (accessToken: string) => {
+  const performSignup = async (accessToken: string, idToken: string) => {
+    let response = null;
     try {
-      const response = await Axios.post('/api/auth/signup', { accessToken });
-      await trackAuthEvent('User signed up', response.data.userInfo.userID, response.data.userInfo.email);
-      return true;
+      response = await Axios.post('/api/auth/signup', { accessToken, idToken });
     } catch (err) {
       analytics.track('User signup failed', { error: err.response.data });
       handleHTTPError(err as AxiosError);
       return false;
     }
+    await trackAuthEvent('User signed up', response.data.userInfo.userID, response.data.userInfo.email);
+    return true;
   };
 
-  const performUILogin = async (accessToken: string, orgName: string) => {
+  const performUILogin = async (accessToken: string, idToken: string, orgName: string) => {
+    let response = null;
     try {
-      const response = await Axios.post('/api/auth/login', {
+      response = await Axios.post('/api/auth/login', {
         accessToken,
+        idToken,
         orgName,
       });
-      await trackAuthEvent('User logged in', response.data.userInfo.userID, response.data.userInfo.email);
-      return true;
     } catch (err) {
       analytics.track('User login failed', { error: err.response.data });
       handleHTTPError(err as AxiosError);
       return false;
     }
+    await trackAuthEvent('User logged in', response.data.userInfo.userID, response.data.userInfo.email);
+    return true;
   };
 
-  const sendTokenToCLI = async (accessToken: string, redirectURI: string) => {
+  const sendTokenToCLI = async (accessToken: string, idToken: string, redirectURI: string) => {
     try {
       const response = await redirectGet(redirectURI, { accessToken });
       return response.status === 200 && response.data === 'OK';
@@ -169,18 +169,19 @@ export const AuthCallbackPage: React.FC = () => {
     location: string,
     orgName: string,
     accessToken: string,
+    idToken: string,
   ) => {
     let signupSuccess = false;
     let loginSuccess = false;
 
     if (signup) {
       // We always need to perform signup, even if the mode is CLI.
-      signupSuccess = await performSignup(accessToken);
+      signupSuccess = await performSignup(accessToken, idToken);
     }
     // eslint-disable-next-line default-case
     switch (mode) {
       case 'cli_get':
-        loginSuccess = await sendTokenToCLI(accessToken, redirectURI);
+        loginSuccess = await sendTokenToCLI(accessToken, idToken, redirectURI);
         if (loginSuccess) {
           setConfig((c) => ({
             ...c,
@@ -207,7 +208,7 @@ export const AuthCallbackPage: React.FC = () => {
         break;
       case 'ui':
         if (!signup) {
-          loginSuccess = await performUILogin(accessToken, orgName);
+          loginSuccess = await performUILogin(accessToken, idToken, orgName);
         }
         // We just need to redirect if in signup or login were successful since
         // the cookies are installed.
@@ -259,13 +260,14 @@ export const AuthCallbackPage: React.FC = () => {
       return;
     }
 
-    doAuth(mode, signup, redirectURI, location, orgName, token?.accessToken);
+    doAuth(mode, signup, redirectURI, location, orgName, token?.accessToken, token?.idToken).then();
   };
 
   React.useEffect(() => {
     GetOAuthProvider().handleToken().then(handleAccessToken).catch((err) => {
       setErr('internal', `${err}`);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const renderUnverifiedEmailMessage = () => {
@@ -365,8 +367,8 @@ export const AuthCallbackPage: React.FC = () => {
   const loading = !config || config.loading;
   return (
     <BasePage>
-      { loading && renderLoadingMessage()}
-      { !loading && (config.err ? renderError() : renderMessage())}
+      {loading && renderLoadingMessage()}
+      {!loading && (config.err ? renderError() : renderMessage())}
     </BasePage>
   );
 };

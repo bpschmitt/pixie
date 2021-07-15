@@ -26,6 +26,7 @@
 // LINT_C_FILE: Do not remove this line. It ensures cpplint treats this as a C file.
 
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf/go_trace_common.h"
+#include "src/stirling/source_connectors/socket_tracer/bcc_bpf/macros.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/go_grpc_types.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/symaddrs.h"
 
@@ -156,6 +157,23 @@ static __inline int32_t get_fd_from_http_http2Framer(const void* framer_ptr,
 // HTTP2 Header Tracing Functions
 //-----------------------------------------------------------------------------
 
+static __inline void copy_header_field(struct header_field_t* dst, struct gostring* src) {
+  dst->size = src->len < HEADER_FIELD_STR_SIZE ? src->len : HEADER_FIELD_STR_SIZE;
+
+  // Note that we have some black magic below with the string sizes.
+  // This is to avoid passing a size of 0 to bpf_probe_read(),
+  // which causes BPF verifier issues on kernel 4.14.
+  // The black magic includes an asm volatile, because otherwise Clang
+  // will optimize our magic away.
+  size_t size_minus_1 = dst->size - 1;
+  asm volatile("" : "+r"(size_minus_1) :);
+  size_t size = size_minus_1 + 1;
+
+  if (size_minus_1 < HEADER_FIELD_STR_SIZE) {
+    bpf_probe_read(dst->msg, size, src->ptr);
+  }
+}
+
 static __inline void fill_header_field(struct go_grpc_http2_header_event_t* event,
                                        const void* header_field_ptr,
                                        const struct go_http2_symaddrs_t* symaddrs) {
@@ -167,15 +185,8 @@ static __inline void fill_header_field(struct go_grpc_http2_header_event_t* even
   bpf_probe_read(&value, sizeof(struct gostring),
                  header_field_ptr + symaddrs->HeaderField_Value_offset);
 
-  // Note that we read one extra byte for name and value.
-  // This is to avoid passing a size of 0 to bpf_probe_read(),
-  // which causes BPF verifier issues on kernel 4.14.
-
-  event->name.size = BPF_LEN_CAP(name.len, HEADER_FIELD_STR_SIZE);
-  bpf_probe_read(event->name.msg, event->name.size + 1, name.ptr);
-
-  event->value.size = BPF_LEN_CAP(value.len, HEADER_FIELD_STR_SIZE);
-  bpf_probe_read(event->value.msg, event->value.size + 1, value.ptr);
+  copy_header_field(&event->name, &name);
+  copy_header_field(&event->value, &value);
 }
 
 static __inline void submit_headers(struct pt_regs* ctx, enum http2_probe_type_t probe_type,
@@ -751,11 +762,23 @@ static __inline void go_http2_submit_data(struct pt_regs* ctx, enum http2_probe_
   }
 
   info->attr.data_size = data.len;
-  uint32_t data_buf_size = BPF_LEN_CAP(data.len, MAX_DATA_SIZE);
-  info->attr.data_buf_size = data_buf_size;
-  bpf_probe_read(info->data, data_buf_size + 1, data.ptr);
 
-  go_grpc_data_events.perf_submit(ctx, info, sizeof(info->attr) + data_buf_size);
+  uint32_t data_buf_size = data.len < MAX_DATA_SIZE ? data.len : MAX_DATA_SIZE;
+  info->attr.data_buf_size = data_buf_size;
+
+  // Note that we have some black magic below with the string sizes.
+  // This is to avoid passing a size of 0 to bpf_probe_read(),
+  // which causes BPF verifier issues on kernel 4.14.
+  // The black magic includes an asm volatile, because otherwise Clang
+  // will optimize our magic away.
+  size_t data_buf_size_minus_1 = data_buf_size - 1;
+  asm volatile("" : "+r"(data_buf_size_minus_1) :);
+  data_buf_size = data_buf_size_minus_1 + 1;
+
+  if (data_buf_size_minus_1 < MAX_DATA_SIZE) {
+    bpf_probe_read(info->data, data_buf_size, data.ptr);
+    go_grpc_data_events.perf_submit(ctx, info, sizeof(info->attr) + data_buf_size);
+  }
 }
 
 // Probes golang.org/x/net/http2.Framer for payload.

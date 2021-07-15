@@ -16,6 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { gql, useQuery, useMutation } from '@apollo/client';
 import Table from '@material-ui/core/Table';
 import IconButton from '@material-ui/core/IconButton';
 import Input from '@material-ui/core/Input';
@@ -30,7 +31,8 @@ import Visibility from '@material-ui/icons/Visibility';
 import VisibilityOff from '@material-ui/icons/VisibilityOff';
 import { distanceInWords } from 'date-fns';
 import * as React from 'react';
-import { useAPIKeys } from '@pixie-labs/api-react';
+
+import { GQLAPIKey } from 'app/types/schema';
 import {
   AdminTooltip, StyledTableCell, StyledTableHeaderCell,
   StyledLeftTableCell, StyledRightTableCell,
@@ -47,7 +49,7 @@ interface APIKeyDisplay {
   desc: string;
 }
 
-export function formatAPIKey(apiKey): APIKeyDisplay {
+export function formatAPIKey(apiKey: GQLAPIKey): APIKeyDisplay {
   const now = new Date();
   return {
     id: apiKey.id,
@@ -58,14 +60,18 @@ export function formatAPIKey(apiKey): APIKeyDisplay {
   };
 }
 
-export const APIKeyRow = ({ apiKey }) => {
+export const APIKeyRow: React.FC<{ apiKey: APIKeyDisplay }> = ({ apiKey }) => {
   const classes = UseKeyListStyles();
   const [showKey, setShowKey] = React.useState(false);
 
   const [open, setOpen] = React.useState<boolean>(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const [{ deleteAPIKey }] = useAPIKeys();
+  const [deleteAPIKey] = useMutation<{ DeleteAPIKey: boolean }, { id: string }>(gql`
+    mutation DeleteAPIKeyFromAdminPage($id: ID!) {
+      DeleteAPIKey(id: $id)
+    }
+  `);
 
   const openMenu = React.useCallback((event) => {
     setOpen(true);
@@ -128,7 +134,24 @@ export const APIKeyRow = ({ apiKey }) => {
           <MenuItem
             key='delete'
             alignItems='center'
-            onClick={() => deleteAPIKey(apiKey.id)}
+            onClick={() => deleteAPIKey({
+              variables: { id: apiKey.id },
+              update: (cache, { data }) => {
+                if (!data.DeleteAPIKey) {
+                  return;
+                }
+                cache.modify({
+                  fields: {
+                    apiKeys(existingKeys, { readField }) {
+                      return existingKeys.filter(
+                        (key) => (apiKey.id !== readField('id', key)),
+                      );
+                    },
+                  },
+                });
+              },
+              optimisticResponse: { DeleteAPIKey: true },
+            })}
           >
             <KeyListItemIcon className={classes.copyBtn}>
               <Delete />
@@ -141,9 +164,23 @@ export const APIKeyRow = ({ apiKey }) => {
   );
 };
 
-export const APIKeysTable = () => {
+export const APIKeysTable: React.FC = () => {
   const classes = UseKeyListStyles();
-  const [{ apiKeys: apiKeysRaw }, loading, error] = useAPIKeys();
+
+  const { data, loading, error } = useQuery<{ apiKeys: GQLAPIKey[] }>(
+    gql`
+      query getAPIKeysForAdminPage{
+        apiKeys {
+          id
+          key
+          desc
+          createdAtMs
+        }
+      }
+    `,
+    { pollInterval: 60000 },
+  );
+
   if (loading) {
     return <div className={classes.error}>Loading...</div>;
   }
@@ -151,7 +188,7 @@ export const APIKeysTable = () => {
     return <div className={classes.error}>{error.toString()}</div>;
   }
 
-  const apiKeys = (apiKeysRaw ?? []).map((key) => formatAPIKey(key));
+  const apiKeys = (data?.apiKeys ?? []).map((key) => formatAPIKey(key));
   return (
     <>
       <Table>

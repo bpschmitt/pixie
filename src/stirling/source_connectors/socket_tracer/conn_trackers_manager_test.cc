@@ -24,6 +24,8 @@
 namespace px {
 namespace stirling {
 
+using ::testing::StrEq;
+
 class ConnTrackersManagerTest : public ::testing::Test {
  protected:
   ConnTrackersManagerTest() : rng_(37), probability_dist_(0.0, 1.0) {}
@@ -78,7 +80,7 @@ TEST_F(ConnTrackersManagerTest, Fuzz) {
     double x = probability_dist_(rng_);
     if (x < 0.80) {
       uint32_t pid = pid_dist(rng_);
-      uint32_t fd = 1;
+      int32_t fd = 1;
       uint64_t tsid = tsid_dist(rng_);
 
       struct conn_id_t conn_id = {{{pid}, 0}, fd, tsid};
@@ -91,6 +93,28 @@ TEST_F(ConnTrackersManagerTest, Fuzz) {
       CleanupTrackers();
     }
   }
+}
+
+// Tests that the DebugInfo() returns expected text.
+TEST_F(ConnTrackersManagerTest, DebugInfo) {
+  struct conn_id_t conn_id = {};
+
+  conn_id.upid.pid = 1;
+  conn_id.upid.start_time_ticks = 1;
+  conn_id.fd = 1;
+  conn_id.tsid = 1;
+
+  trackers_mgr_.GetOrCreateConnTracker(conn_id);
+  EXPECT_THAT(
+      trackers_mgr_.DebugInfo(),
+      StrEq("ConnTracker count statistics: kTotal=1 kReadyForDestruction=0 "
+            "kCreated=1 kDestroyed=0 kDestroyedGens=0 "
+            "kProtocolUnknown=0 kProtocolHTTP=0 kProtocolHTTP2=0 kProtocolMySQL=0 kProtocolCQL=0 "
+            "kProtocolPGSQL=0 kProtocolDNS=0 kProtocolRedis=0 kProtocolMongo=0 kProtocolKafka=0 \n"
+            "Detailed statistics of individual ConnTracker:\n"
+            "  conn_tracker=conn_id=[pid=1 start_time_ticks=1 fd=1 gen=1] state=kCollecting "
+            "remote_addr=-:-1 role=kRoleUnknown protocol=kProtocolUnknown zombie=false "
+            "ready_for_destruction=false\n"));
 }
 
 class ConnTrackerGenerationsTest : public ::testing::Test {
@@ -111,10 +135,11 @@ class ConnTrackerGenerationsTest : public ::testing::Test {
 
   int CleanupTrackers() {
     // Simulate elapsed iterations, which cause trackers to become ReadyForDestruction().
-    for (auto& [tsid, tracker] : tracker_gens_.generations_) {
+    for (auto& [tsid, tracker] : tracker_gens_.generations()) {
       for (int i = 0; i < ConnTracker::kDeathCountdownIters; ++i) {
         tracker->IterationPostTick();
       }
+      tracker->MarkFinalConnStatsReported();
     }
 
     return tracker_gens_.CleanupGenerations(&tracker_pool);

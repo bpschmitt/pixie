@@ -45,24 +45,22 @@ using ::px::Status;
 using ::px::StatusOr;
 
 using ::px::stirling::IndexPublication;
-using ::px::stirling::PrintRecordBatch;
 using ::px::stirling::SourceConnectorGroup;
 using ::px::stirling::SourceRegistry;
 using ::px::stirling::Stirling;
+using ::px::stirling::ToString;
 using ::px::stirling::stirlingpb::InfoClass;
 using ::px::stirling::stirlingpb::Publish;
-using ::px::stirling::stirlingpb::Subscribe;
 using ::px::types::ColumnWrapperRecordBatch;
 using ::px::types::TabletID;
 
 using DynamicTracepointDeployment =
     ::px::stirling::dynamic_tracing::ir::logical::TracepointDeployment;
 
-DEFINE_string(source_group, "kProd",
-              "[kAll|kProd|kMetrics|kTracers|kProfiler] Choose sources to enable.");
-DEFINE_string(sources, "",
-              "The source connectors to register, find them in the header files of "
-              "source connector classes");
+DEFINE_string(
+    sources, "kProd",
+    "Choose sources to enable. [kAll|kProd|kMetrics|kTracers|kProfiler] or comma separated list of "
+    "sources (find them the header files of source connector classes).");
 DEFINE_string(trace, "",
               "Dynamic trace to deploy. Either (1) the path to a file containing PxL or IR trace "
               "spec, or (2) <path to object file>:<symbol_name> for full-function tracing.");
@@ -100,7 +98,7 @@ Status StirlingWrapperCallback(uint64_t table_id, TabletID /* tablet_id */,
 
   if (g_table_print_enables.contains(table_info.schema().name())) {
     // Only output enabled tables (lookup by name).
-    PrintRecordBatch(table_info.schema().name(), table_info.schema(), *record_batch);
+    std::cout << ToString(table_info.schema().name(), table_info.schema(), *record_batch);
   }
 
   return Status::OK();
@@ -278,24 +276,18 @@ int main(int argc, char** argv) {
     // Presumably, user only wants their dynamic trace.
     LOG(INFO) << "Dynamic Trace provided. All other data sources will be disabled.";
     FLAGS_sources = "";
-    FLAGS_source_group = "";
   }
 
   absl::flat_hash_set<std::string_view> source_names;
 
-  if (!FLAGS_source_group.empty()) {
-    std::optional<SourceConnectorGroup> group =
-        magic_enum::enum_cast<SourceConnectorGroup>(FLAGS_source_group);
-    if (!group.has_value()) {
-      LOG(ERROR) << absl::Substitute("$0 is not a valid source register specifier",
-                                     FLAGS_source_group);
-    }
-    source_names = GetSourceNamesForGroup(group.value());
-  }
-
   if (!FLAGS_sources.empty()) {
-    // --sources overrides --source_group.
-    source_names = absl::StrSplit(FLAGS_sources, ",", absl::SkipWhitespace());
+    std::optional<SourceConnectorGroup> group =
+        magic_enum::enum_cast<SourceConnectorGroup>(FLAGS_sources);
+    if (group.has_value()) {
+      source_names = GetSourceNamesForGroup(group.value());
+    } else {
+      source_names = absl::StrSplit(FLAGS_sources, ",", absl::SkipWhitespace());
+    }
   }
 
   std::unique_ptr<SourceRegistry> registry =
@@ -318,10 +310,6 @@ int main(int argc, char** argv) {
   Publish publication;
   stirling->GetPublishProto(&publication);
   IndexPublication(publication, &g_table_info_map);
-
-  // Subscribe to all elements.
-  // Stirling will update its schemas and sets up the data tables.
-  PL_CHECK_OK(stirling->SetSubscription(px::stirling::SubscribeToAllInfoClasses(publication)));
 
   // Set a dummy callback function (normally this would be in the agent).
   stirling->RegisterDataPushCallback(StirlingWrapperCallback);
@@ -365,9 +353,6 @@ int main(int argc, char** argv) {
         absl::base_internal::SpinLockHolder lock(&g_callback_state_lock);
         IndexPublication(trace_pub, &g_table_info_map);
       }
-
-      // Update the subscription to enable the new trace.
-      PL_CHECK_OK(stirling->SetSubscription(px::stirling::SubscribeToAllInfoClasses(trace_pub)));
     }
   }
 

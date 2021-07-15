@@ -19,6 +19,7 @@
 #include "src/stirling/obj_tools/elf_tools.h"
 
 #include <llvm-c/Disassembler.h>
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/Support/TargetSelect.h>
 
@@ -193,8 +194,7 @@ StatusOr<std::unique_ptr<ElfReader>> ElfReader::Create(
   return elf_reader;
 }
 
-StatusOr<std::vector<ElfReader::SymbolInfo>> ElfReader::SearchSymbols(
-    std::string_view search_symbol, SymbolMatchType match_type, std::optional<int> symbol_type) {
+StatusOr<ELFIO::section*> ElfReader::SymtabSection() {
   ELFIO::section* symtab_section = nullptr;
   for (int i = 0; i < elf_reader_.sections.size(); ++i) {
     ELFIO::section* psec = elf_reader_.sections[i];
@@ -210,6 +210,13 @@ StatusOr<std::vector<ElfReader::SymbolInfo>> ElfReader::SearchSymbols(
   if (symtab_section == nullptr) {
     return error::NotFound("Could not find symtab section in binary=$0", binary_path_);
   }
+
+  return symtab_section;
+}
+
+StatusOr<std::vector<ElfReader::SymbolInfo>> ElfReader::SearchSymbols(
+    std::string_view search_symbol, SymbolMatchType match_type, std::optional<int> symbol_type) {
+  PL_ASSIGN_OR_RETURN(ELFIO::section * symtab_section, SymtabSection());
 
   std::vector<SymbolInfo> symbol_infos;
 
@@ -284,6 +291,107 @@ std::optional<int64_t> ElfReader::SymbolAddress(std::string_view symbol) {
     }
   }
   return std::nullopt;
+}
+
+StatusOr<std::optional<std::string>> ElfReader::AddrToSymbol(size_t sym_addr) {
+  PL_ASSIGN_OR_RETURN(ELFIO::section * symtab_section, SymtabSection());
+
+  const ELFIO::symbol_section_accessor symbols(elf_reader_, symtab_section);
+
+  // Call ELFIO to get symbol by address.
+  // ELFIO looks up the symbol and then populates name, size, type, etc.
+  // We only care about the name, but need to declare the other variables as well.
+  const ELFIO::Elf64_Addr addr = sym_addr;
+  std::string name;
+  ELFIO::Elf_Xword size = 0;
+  unsigned char bind = 0;
+  unsigned char type = ELFIO::STT_NOTYPE;
+  ELFIO::Elf_Half section_index;
+  unsigned char other;
+  bool found = symbols.get_symbol(addr, name, size, bind, type, section_index, other);
+
+  if (!found) {
+    return std::optional<std::string>();
+  }
+
+  return std::optional<std::string>(std::move(name));
+}
+
+// TODO(oazizi): Optimize by indexing or switching to binary search if we can guarantee addresses
+//               are ordered.
+StatusOr<std::optional<std::string>> ElfReader::InstrAddrToSymbol(size_t sym_addr) {
+  PL_ASSIGN_OR_RETURN(ELFIO::section * symtab_section, SymtabSection());
+
+  const ELFIO::symbol_section_accessor symbols(elf_reader_, symtab_section);
+  for (unsigned int j = 0; j < symbols.get_symbols_num(); ++j) {
+    // Call ELFIO to get symbol by index.
+    // ELFIO looks up the index and then populates name, addr, size, type, etc.
+    // We only care about the name and addr, but need to declare the other variables as well.
+    std::string name;
+    ELFIO::Elf64_Addr addr = 0;
+    ELFIO::Elf_Xword size = 0;
+    unsigned char bind = 0;
+    unsigned char type = ELFIO::STT_NOTYPE;
+    ELFIO::Elf_Half section_index;
+    unsigned char other;
+    symbols.get_symbol(j, name, addr, size, bind, type, section_index, other);
+
+    if (sym_addr >= addr && sym_addr < addr + size) {
+      return std::optional<std::string>(llvm::demangle(name));
+    }
+  }
+
+  return std::optional<std::string>();
+}
+
+StatusOr<ElfReader::Symbolizer> ElfReader::GetSymbolizer() {
+  PL_ASSIGN_OR_RETURN(ELFIO::section * symtab_section, SymtabSection());
+
+  ElfReader::Symbolizer symbolizer;
+
+  const ELFIO::symbol_section_accessor symbols(elf_reader_, symtab_section);
+  for (unsigned int j = 0; j < symbols.get_symbols_num(); ++j) {
+    // Call ELFIO to get symbol by index.
+    // ELFIO looks up the index and then populates name, addr, size, type, etc.
+    // We only care about the name and addr, but need to declare the other variables as well.
+    std::string name;
+    ELFIO::Elf64_Addr addr = 0;
+    ELFIO::Elf_Xword size = 0;
+    unsigned char bind = 0;
+    unsigned char type = ELFIO::STT_NOTYPE;
+    ELFIO::Elf_Half section_index;
+    unsigned char other;
+    symbols.get_symbol(j, name, addr, size, bind, type, section_index, other);
+
+    symbolizer.AddEntry(addr, size, llvm::demangle(name));
+  }
+
+  return symbolizer;
+}
+
+void ElfReader::Symbolizer::AddEntry(size_t addr, size_t size, std::string name) {
+  symbols_.emplace(addr, SymbolAddrInfo{size, std::move(name)});
+}
+
+const std::string& ElfReader::Symbolizer::Lookup(size_t addr) const {
+  static const std::string kEmptyString;
+
+  // Find the first symbol for which the address_range_start > addr.
+  auto iter = symbols_.upper_bound(addr);
+
+  if (iter == symbols_.begin() || symbols_.empty()) {
+    return kEmptyString;
+  }
+
+  // std::upper_bound will make us overshoot our potential match,
+  // so go back by one, and check if it is indeed a match.
+  --iter;
+  if (addr >= iter->first && addr < iter->first + iter->second.size) {
+    return iter->second.name;
+  }
+
+  // Couldn't find the address.
+  return kEmptyString;
 }
 
 namespace {

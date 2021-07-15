@@ -16,7 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { buildClass, scrollbarStyles } from '@pixie-labs/components';
+import { buildClass, scrollbarStyles, Footer } from 'app/components';
+import { Copyright } from 'configurable/copyright';
 
 import {
   Theme, makeStyles, Button,
@@ -24,8 +25,8 @@ import {
 import { createStyles } from '@material-ui/styles';
 
 import * as React from 'react';
-import { LiveViewButton } from 'containers/admin/utils';
-import NavBars from 'containers/App/nav-bars';
+import { LiveViewButton } from 'app/containers/admin/utils';
+import NavBars from 'app/containers/App/nav-bars';
 
 import licenseJson from 'configurable/licenses.json';
 
@@ -55,11 +56,27 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     borderTopColor: theme.palette.background.three,
     borderTopWidth: theme.spacing(0.25),
     padding: theme.spacing(1),
+    display: 'flex',
+    flexFlow: 'column nowrap',
+  },
+  mainBlock: {
+    flex: '1 0 auto',
+  },
+  mainFooter: {
+    flex: '0 0 auto',
   },
   titleText: {
     ...theme.typography.h6,
     color: theme.palette.foreground.grey5,
     fontWeight: theme.typography.fontWeightBold,
+  },
+  topbarTitle: {
+    ...theme.typography.h6,
+    color: theme.palette.foreground.grey5,
+    fontWeight: theme.typography.fontWeightBold,
+    display: 'flex',
+    alignItems: 'center',
+    height: '100%',
   },
   floatLeft: {
     float: 'left',
@@ -91,7 +108,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
 
 interface LicenseEntry {
   name: string;
-  spdxID: string;
+  spdxID?: string;
   url?: string;
   licenseText?: string;
 }
@@ -102,7 +119,7 @@ const CreditsPage: React.FC = ({ children }) => {
     <div className={classes.root}>
       <NavBars>
         <div className={classes.title}>
-          <div className={classes.titleText}>Credits</div>
+          <div className={classes.topbarTitle}>Credits</div>
         </div>
         <LiveViewButton />
       </NavBars>
@@ -166,10 +183,18 @@ const Credits: React.FC<{ licenses: LicenseEntry[] }> = ({ licenses }) => {
   );
 };
 
-const CreditsOverviewPage: React.FC = () => (
-  <CreditsPage>
-    <Credits licenses={licenseJson} />
-  </CreditsPage>
-);
+const CreditsOverviewPage: React.FC = () => {
+  const classes = useStyles();
+  return (
+    <CreditsPage>
+      <div className={classes.mainBlock}>
+        <Credits licenses={licenseJson} />
+      </div>
+      <div className={classes.mainFooter}>
+        <Footer copyright={Copyright} />
+      </div>
+    </CreditsPage>
+  );
+};
 
 export default CreditsOverviewPage;

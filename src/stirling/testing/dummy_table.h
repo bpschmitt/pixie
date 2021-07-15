@@ -43,10 +43,11 @@ constexpr DataElement kDummyElements[] = {
 // clang-format on
 
 constexpr auto kDummyTable = DataTableSchema("dummy", "A dummy table for testing", kDummyElements);
+DEFINE_PRINT_TABLE(Dummy);
 
 template <const DataTableSchema* schema>
 struct TableFixture {
-  TableFixture() : data_table(*schema) {}
+  TableFixture() : data_table(/*id*/ 0, *schema) {}
 
   types::ColumnWrapperRecordBatch record_batch() {
     std::vector<TaggedRecordBatch> tablets = data_table.ConsumeRecords();

@@ -22,25 +22,62 @@ import {
   Theme, withStyles,
 } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
-import Paper from '@material-ui/core/Paper';
-import { GQLClusterStatus as ClusterStatus, containsMutation } from '@pixie-labs/api';
-import { useListClusters, useAutocompleteFieldSuggester } from '@pixie-labs/api-react';
+import { GQLAutocompleteEntityKind, GQLAutocompleteSuggestion } from 'app/types/schema';
+import { PixieAPIClient, PixieAPIContext } from 'app/api';
+import { gql } from '@apollo/client';
 
 import {
-  Breadcrumbs, BreadcrumbOptions,
-  PixieCommandIcon, StatusCell,
-} from '@pixie-labs/components';
-import { ClusterContext } from 'common/cluster-context';
-import {
-  getArgTypesForVis, getArgVariableMap,
-} from 'utils/args-utils';
-import { SCRATCH_SCRIPT, ScriptsContext } from 'containers/App/scripts-context';
-import { ScriptContext } from 'context/script-context';
-import { entityPageForScriptId, optionallyGetNamespace } from 'containers/live-widgets/utils/live-view-params';
-import { pxTypeToEntityType, entityStatusGroup } from 'containers/command-input/autocomplete-utils';
-import { clusterStatusGroup } from 'containers/admin/utils';
-import ExecuteScriptButton from './execute-button';
+  Breadcrumbs, BreadcrumbOptions, StatusCell,
+} from 'app/components';
+import { ClusterContext } from 'app/common/cluster-context';
+import { argVariableMap, argTypesForVis } from 'app/utils/args-utils';
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import { SCRATCH_SCRIPT, ScriptsContext } from 'app/containers/App/scripts-context';
+import { ScriptContext } from 'app/context/script-context';
+import { pxTypeToEntityType, entityStatusGroup } from 'app/containers/command-input/autocomplete-utils';
+import TimeArgDetail from 'configurable/time-arg-detail';
 import { Variable } from './vis';
+
+type AutocompleteFieldSuggester = (
+  input: string, kind: GQLAutocompleteEntityKind
+) => Promise<GQLAutocompleteSuggestion[]>;
+
+/**
+ * Given a cluster to check against, returns an @link{AutocompleteFieldSuggester} for that cluster.
+ *
+ * Usage:
+ * ```
+ * const getCompletions = useAutocompleteSuggestion('fooCluster');
+ * React.useEffect(() => {
+ *   // Might suggest the script `px/http_data` as a completion for `px/htt`
+ *   getCompletions('htt', 'AEK_SCRIPT').then(suggestions => suggestions.forEach(s => doSomethingMeaningful(s)));
+ * }, [getCompletions]);
+ * ```
+ */
+function useAutocompleteFieldSuggester(clusterUID: string): AutocompleteFieldSuggester {
+  const client = React.useContext(PixieAPIContext) as PixieAPIClient;
+  return React.useCallback<AutocompleteFieldSuggester>((partialInput: string, kind: GQLAutocompleteEntityKind) => (
+    client.getCloudClient().graphQL.query<{ autocompleteField: GQLAutocompleteSuggestion[] }>({
+      query: gql`
+        query getCompletions($input: String, $kind: AutocompleteEntityKind, $clusterUID: String) {
+          autocompleteField(input: $input, fieldType: $kind, clusterUID: $clusterUID) {
+            name
+            description
+            matchedIndexes
+            state
+          }
+        }
+      `,
+      fetchPolicy: 'network-only',
+      variables: {
+        input: partialInput,
+        kind,
+        clusterUID,
+      },
+    }).then(
+      (results) => results.data.autocompleteField,
+    )), [client, clusterUID]);
+}
 
 const styles = (({ shape, palette, spacing }: Theme) => createStyles({
   root: {
@@ -50,11 +87,14 @@ const styles = (({ shape, palette, spacing }: Theme) => createStyles({
     marginRight: spacing(3.5),
     marginLeft: spacing(3),
     marginBottom: spacing(1),
+    background: palette.background.three,
     // This adds a scroll to the breadcrumbs on overflow,
     // but it's hard for the user to know it exists. Perhaps we can
     // consider adding a scroll effect or something to make it easier to
     // discover.
     borderRadius: shape.borderRadius,
+    boxShadow: '4px 4px 4px rgba(0, 0, 0, 0.25)',
+    border: palette.border.unFocused,
   },
   spacer: {
     flex: 1,
@@ -73,87 +113,100 @@ const styles = (({ shape, palette, spacing }: Theme) => createStyles({
     padding: 0,
   },
   breadcrumbs: {
-    width: '100%',
-    overflow: 'hidden',
     display: 'flex',
+    marginLeft: spacing(3),
+    marginRight: spacing(3),
+    overflow: 'hidden',
   },
 }));
 
 const LiveViewBreadcrumbs = ({ classes }) => {
-  const [clusters, loading, error] = useListClusters();
-  const { selectedCluster, setCluster, selectedClusterUID } = React.useContext(ClusterContext);
+  const { selectedClusterUID } = React.useContext(ClusterContext);
   const { scripts } = React.useContext(ScriptsContext);
 
   const {
-    vis, pxl, args, id, liveViewPage, setArgs, execute, setScript, parseVisOrShowError, argsForVisOrShowError,
+    args, script, setScriptAndArgs,
   } = React.useContext(ScriptContext);
+
+  const { embedState: { disableTimePicker, isEmbedded, widget } } = React.useContext(LiveRouteContext);
 
   const getCompletions = useAutocompleteFieldSuggester(selectedClusterUID);
 
   const scriptIds = React.useMemo(() => [...scripts.keys()], [scripts]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const clusterIds = React.useMemo(() => clusters?.map((c) => c.id), [clusters]);
-
-  type MemoCrumbs = { entityBreadcrumbs: BreadcrumbOptions[]; argBreadcrumbs: BreadcrumbOptions[] };
 
   // For useMemo dependencies below, see https://github.com/facebook/react/issues/20204
-  const collapsedClusterIds = clusterIds?.join(',');
   const collapsedScriptIds = scriptIds?.join(',');
 
+  type MemoCrumbs = { entityBreadcrumbs: BreadcrumbOptions[]; argBreadcrumbs: BreadcrumbOptions[] };
   const { entityBreadcrumbs, argBreadcrumbs }: MemoCrumbs = React.useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-shadow
     const entityBreadcrumbs: BreadcrumbOptions[] = [];
     // eslint-disable-next-line @typescript-eslint/no-shadow
     const argBreadcrumbs: BreadcrumbOptions[] = [];
 
-    if (loading || !clusters || error) return { entityBreadcrumbs, argBreadcrumbs };
-
-    // Cluster always goes first in breadcrumbs.
-    const clusterName = clusters.find((c) => c.id === selectedCluster)?.prettyClusterName || 'unknown cluster';
-    const clusterNameToID: Record<string, string> = {};
-    clusters.forEach((c) => {
-      clusterNameToID[c.prettyClusterName] = c.id;
-    });
+    // Add script at beginning of breadcrumbs.
     entityBreadcrumbs.push({
-      title: 'cluster',
-      value: clusterName,
+      title: 'script',
+      value: script?.id,
       selectable: true,
-      // eslint-disable-next-line
-      getListItems: async (input) => (clusters.filter((c) => c.status !== ClusterStatus.CS_DISCONNECTED
-              && c.prettyClusterName.includes(input))
-        .map((c) => ({ value: c.prettyClusterName, icon: <StatusCell statusGroup={clusterStatusGroup(c.status)} /> }))
-      ),
-      onSelect: (input) => {
-        setCluster(clusterNameToID[input]);
+      allowTyping: true,
+      divider: true,
+      getListItems: async (input) => {
+        // Turns "  px/be_spoke-  " into "px/bespoke"
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9/]+/gi, '');
+        const normalizedInput = normalize(input);
+        const normalizedScratchId = normalize(SCRATCH_SCRIPT.id);
+
+        const ids = !input ? [...scriptIds] : scriptIds.filter((s) => {
+          const ns = normalize(s);
+          return ns === normalizedScratchId || ns.indexOf(normalizedInput) >= 0;
+        });
+
+        // The scratch script should always appear at the top of the list for visibility. It doesn't get auto-selected
+        // unless it's the only thing in the list.
+        const scratchIndex = scriptIds.indexOf(SCRATCH_SCRIPT.id);
+        if (scratchIndex !== -1) {
+          scriptIds.splice(scratchIndex, 1);
+          // Don't include SCRATCH in embedded views.
+          if (!isEmbedded) {
+            scriptIds.unshift(SCRATCH_SCRIPT.id);
+          }
+        }
+
+        return ids.map((scriptId) => ({
+          value: scriptId,
+          description: scripts.get(scriptId).description,
+          autoSelectPriority: scriptId === SCRATCH_SCRIPT.id ? -1 : 0,
+        }));
       },
-      requireCompletion: true,
+      onSelect: (newVal) => {
+        const newScript = scripts.get(newVal);
+        setScriptAndArgs(newScript, args);
+      },
     });
 
     // Add args to breadcrumbs.
-    const argTypes = getArgTypesForVis(vis);
+    const argTypes = argTypesForVis(script?.vis);
+    const variables = argVariableMap(script?.vis);
 
-    const argVariableMap = getArgVariableMap(vis);
-
-    Object.entries(args).filter(([argName]) => argName !== 'script').forEach(([argName, argVal]) => {
+    for (const [argName, argVal] of Object.entries(args)) {
       // Only add suggestions if validValues are specified. Otherwise, the dropdown is populated with autocomplete
       // entities or has no elements and the user must manually type in values.
-      const variable: Variable = argVariableMap[argName];
+      const variable: Variable = variables[argName];
 
-      const argProps = {
+      const argProps: BreadcrumbOptions = {
         title: argName,
         value: argVal?.toString(),
         selectable: true,
         allowTyping: true,
-        onSelect: (newVal) => {
-          const newArgs = { ...args, [argName]: newVal };
-          setArgs(newArgs);
-          execute({
-            pxl, vis, args: newArgs, id, liveViewPage,
-          });
+        onSelect: (newVal: string) => {
+          const val = newVal?.trim() || variable?.defaultValue?.trim() || '';
+          setScriptAndArgs(script, { ...args, [argName]: val });
         },
         getListItems: null,
         requireCompletion: false,
         placeholder: variable?.description,
+        explanation: null,
       };
 
       if (variable && typeof variable.defaultValue === 'undefined') {
@@ -186,98 +239,36 @@ const LiveViewBreadcrumbs = ({ classes }) => {
       // (such as nodes), since they are not yet supported in autocomplete. Until that is fixed, this is hard-coded
       // for now.
       if (argName === 'start_time' || argName === 'start') {
-        argBreadcrumbs.push(argProps);
+        // Don't show the time picker at all if it is disabled.
+        if (!disableTimePicker) {
+          argProps.explanation = TimeArgDetail;
+          argBreadcrumbs.push(argProps);
+        }
       } else {
         entityBreadcrumbs.push(argProps);
       }
-    });
-
-    // Add script at end of breadcrumbs.
-    entityBreadcrumbs.push({
-      title: 'script',
-      value: id,
-      selectable: true,
-      allowTyping: true,
-      getListItems: async (input) => {
-        // Turns "  px/be_spoke-  " into "px/bespoke"
-        const normalize = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9/]+/gi, '');
-        const normalizedInput = normalize(input);
-        const normalizedScratchId = normalize(SCRATCH_SCRIPT.id);
-
-        const ids = !input ? [...scriptIds] : scriptIds.filter((s) => {
-          const ns = normalize(s);
-          return ns === normalizedScratchId || ns.indexOf(normalizedInput) >= 0;
-        });
-
-        // The scratch script should always appear at the top of the list for visibility. It doesn't get auto-selected
-        // unless it's the only thing in the list.
-        const scratchIndex = scriptIds.indexOf(SCRATCH_SCRIPT.id);
-        if (scratchIndex !== -1) {
-          scriptIds.splice(scratchIndex, 1);
-          scriptIds.unshift(SCRATCH_SCRIPT.id);
-        }
-
-        return ids.map((scriptId) => ({
-          value: scriptId,
-          description: scripts.get(scriptId).description,
-          autoSelectPriority: scriptId === SCRATCH_SCRIPT.id ? -1 : 0,
-        }));
-      },
-      onSelect: (newVal) => {
-        const script = scripts.get(newVal);
-        const selectedVis = parseVisOrShowError(script.vis);
-        const parsedArgs = argsForVisOrShowError(selectedVis, {
-          // Grab the namespace if it exists on a service or pod argument.
-          namespace: optionallyGetNamespace(args),
-          ...args,
-        });
-        if (!selectedVis && !parsedArgs) {
-          return;
-        }
-
-        const execArgs = {
-          liveViewPage: entityPageForScriptId(newVal),
-          pxl: script.code,
-          id: newVal,
-          args: parsedArgs,
-          vis: selectedVis,
-        };
-        setScript(execArgs.vis, execArgs.pxl, execArgs.args, execArgs.id, execArgs.liveViewPage);
-        if (newVal === SCRATCH_SCRIPT.id) {
-          // Skip executing the script, which starts empty. Executing empty scripts emits scary (harmless) errors.
-          return;
-        }
-        if (!containsMutation(execArgs.pxl)) {
-          execute(execArgs);
-        }
-      },
-    });
+    }
 
     return { entityBreadcrumbs, argBreadcrumbs };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, id, collapsedClusterIds, collapsedScriptIds, args, selectedCluster, getCompletions]);
+  }, [script?.id, collapsedScriptIds, args, selectedClusterUID, getCompletions]);
 
-  if (loading) {
-    return (<div>Loading...</div>);
+  if (widget) {
+    return <></>;
   }
 
   return (
-    <Paper className={classes.root} elevation={2}>
-      <PixieCommandIcon fontSize='large' className={classes.pixieIcon} />
-      <div className={classes.verticalLine} />
+    <>
       <div className={classes.breadcrumbs}>
         <Breadcrumbs
           breadcrumbs={entityBreadcrumbs}
         />
         <div className={classes.spacer} />
-        <div>
-          <Breadcrumbs
-            breadcrumbs={argBreadcrumbs}
-          />
-        </div>
+        <Breadcrumbs
+          breadcrumbs={argBreadcrumbs}
+        />
       </div>
-      <ExecuteScriptButton />
-    </Paper>
+    </>
   );
 };
 

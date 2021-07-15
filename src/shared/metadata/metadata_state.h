@@ -142,12 +142,6 @@ class K8sMetadataState : NotCopyable {
    */
   const ContainerInfo* ContainerInfoByID(CIDView id) const;
 
-  const ServicesByNameMap& services_by_name() const { return services_by_name_; }
-
-  const NamespacesByNameMap& namespaces_by_name() const { return namespaces_by_name_; }
-
-  const ContainersByNameMap& containers_by_name() const { return containers_by_name_; }
-
   /**
    * ContainerIDByName returns the ContainerID for the container of the given name.
    * @param container_name the container name
@@ -192,10 +186,14 @@ class K8sMetadataState : NotCopyable {
   Status HandleServiceUpdate(const ServiceUpdate& update);
   Status HandleNamespaceUpdate(const NamespaceUpdate& update);
 
+  Status CleanupExpiredMetadata(int64_t retention_time_ns);
+
   absl::flat_hash_map<CID, ContainerInfoUPtr>& containers_by_id() { return containers_by_id_; }
   std::string DebugString(int indent_level = 0) const;
 
  private:
+  const K8sMetadataObject* K8sMetadataObjectByID(UIDView id, K8sObjectType type) const;
+
   // The CIDR block used for services inside the cluster.
   std::optional<CIDRBlock> service_cidr_;
 
@@ -203,7 +201,10 @@ class K8sMetadataState : NotCopyable {
   std::vector<CIDRBlock> pod_cidrs_;
 
   // This stores K8s native objects (services, pods, etc).
-  absl::flat_hash_map<UID, K8sMetadataObjectUPtr> k8s_objects_;
+  absl::flat_hash_map<UID, K8sMetadataObjectUPtr> k8s_objects_by_id_;
+
+  // This stores container objects, complementing k8s_objects_by_id_.
+  absl::flat_hash_map<CID, ContainerInfoUPtr> containers_by_id_;
 
   /**
    * Mapping of pods by name.
@@ -229,11 +230,6 @@ class K8sMetadataState : NotCopyable {
    * Mapping of Pods by host ip.
    */
   PodsByPodIpMap pods_by_ip_;
-
-  /**
-   * Mapping of containers by ID.
-   */
-  absl::flat_hash_map<CID, ContainerInfoUPtr> containers_by_id_;
 };
 
 class AgentMetadataState : NotCopyable {

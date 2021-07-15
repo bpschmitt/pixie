@@ -16,8 +16,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClusterContext } from 'common/cluster-context';
-import { VizierTable as Table } from '@pixie-labs/api';
+import { ClusterContext } from 'app/common/cluster-context';
+import { WidgetDisplay } from 'app/containers/live/vis';
+import { Table } from 'app/api';
 import * as React from 'react';
 import {
   Theme, Typography,
@@ -26,9 +27,9 @@ import {
 } from '@material-ui/core';
 import { createStyles } from '@material-ui/styles';
 import { IndexRange } from 'react-virtualized';
-import { Arguments } from 'utils/args-utils';
-import { VizierDataTable } from '../../vizier-data-table/vizier-data-table';
-import { JSONData } from '../../format-data/format-data';
+import { Arguments } from 'app/utils/args-utils';
+import { LiveDataTable } from 'app/containers/live-data-table/live-data-table';
+import { JSONData } from 'app/containers/format-data/format-data';
 
 const styles = ({ spacing }: Theme) => createStyles({
   root: {
@@ -55,12 +56,19 @@ const styles = ({ spacing }: Theme) => createStyles({
   },
 });
 
+export interface QueryResultTableDisplay extends WidgetDisplay {
+  gutterColumn?: string,
+}
+
 export interface QueryResultTableProps extends WithStyles<typeof styles> {
+  display: QueryResultTableDisplay;
   data: Table;
   propagatedArgs: Arguments;
 }
 
-const QueryResultTableBare = (({ data, classes, propagatedArgs }: QueryResultTableProps) => {
+const QueryResultTableBare = (({
+  display, data, classes, propagatedArgs,
+}: QueryResultTableProps) => {
   const { selectedClusterName } = React.useContext(ClusterContext);
   const ExpandedRowRenderer = (rowData: any) => (
     <JSONData
@@ -96,11 +104,12 @@ const QueryResultTableBare = (({ data, classes, propagatedArgs }: QueryResultTab
   return (
     <div className={classes.root}>
       <div className={classes.table}>
-        <VizierDataTable
+        <LiveDataTable
           table={data}
           expandable
           expandedRenderer={ExpandedRowRenderer}
           prettyRender
+          gutterColumn={display.gutterColumn}
           clusterName={selectedClusterName}
           onRowsRendered={(info: IndexRange) => {
             setIndexRange(info);

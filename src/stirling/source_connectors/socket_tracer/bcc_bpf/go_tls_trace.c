@@ -26,6 +26,7 @@
 // LINT_C_FILE: Do not remove this line. It ensures cpplint treats this as a C file.
 
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf/go_trace_common.h"
+#include "src/stirling/source_connectors/socket_tracer/bcc_bpf/macros.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/symaddrs.h"
 
 // Key: TGID
@@ -86,8 +87,11 @@ int probe_tls_conn_write(struct pt_regs* ctx) {
   conn_intf.type = common_symaddrs->tls_Conn;
   conn_intf.ptr = conn_ptr;
   int fd = get_fd_from_conn_intf_core(conn_intf, common_symaddrs);
+  if (fd == kInvalidFD) {
+    return 0;
+  }
 
-  set_conn_as_ssl(id, fd);
+  set_conn_as_ssl(tgid, fd);
 
   struct data_args_t args;
   args.source_fn = kGoTLSConnWrite;
@@ -155,8 +159,11 @@ int probe_tls_conn_read(struct pt_regs* ctx) {
   conn_intf.type = common_symaddrs->tls_Conn;
   conn_intf.ptr = conn_ptr;
   int fd = get_fd_from_conn_intf_core(conn_intf, common_symaddrs);
+  if (fd == kInvalidFD) {
+    return 0;
+  }
 
-  set_conn_as_ssl(id, fd);
+  set_conn_as_ssl(tgid, fd);
 
   struct data_args_t args;
   args.source_fn = kGoTLSConnRead;

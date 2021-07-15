@@ -33,8 +33,8 @@ namespace stirling {
 using system::ProcParser;
 
 Status ProcessStatsConnector::InitImpl() {
-  sample_push_freq_mgr_.set_sampling_period(kSamplingPeriod);
-  sample_push_freq_mgr_.set_push_period(kPushPeriod);
+  sampling_freq_mgr_.set_period(kSamplingPeriod);
+  push_freq_mgr_.set_period(kPushPeriod);
   return Status::OK();
 }
 
@@ -44,7 +44,7 @@ void ProcessStatsConnector::TransferProcessStatsTable(ConnectorContext* ctx,
                                                       DataTable* data_table) {
   const absl::flat_hash_map<md::UPID, md::PIDInfoUPtr>& pid_info_by_upid = ctx->GetPIDInfoMap();
 
-  int64_t timestamp = AdjustedSteadyClockNowNS();
+  int64_t timestamp = CurrentTimeNS();
 
   for (const auto& [upid, pid_info] : pid_info_by_upid) {
     // TODO(zasgar): Fix condition for dead pids after helper function is added.
@@ -92,21 +92,17 @@ void ProcessStatsConnector::TransferProcessStatsTable(ConnectorContext* ctx,
   }
 }
 
-void ProcessStatsConnector::TransferDataImpl(ConnectorContext* ctx, uint32_t table_num,
-                                             DataTable* data_table) {
-  DCHECK_LT(table_num, num_tables())
-      << absl::Substitute("Trying to access unexpected table: table_num=$0", table_num);
-
-  TransferProcessStatsTable(ctx, data_table);
-}
-
 void ProcessStatsConnector::TransferDataImpl(ConnectorContext* ctx,
                                              const std::vector<DataTable*>& data_tables) {
   DCHECK_EQ(data_tables.size(), 1);
 
-  if (data_tables[kProcStatsTableNum] != nullptr) {
-    TransferProcessStatsTable(ctx, data_tables[kProcStatsTableNum]);
+  auto* data_table = data_tables[0];
+
+  if (data_table == nullptr) {
+    return;
   }
+
+  TransferProcessStatsTable(ctx, data_table);
 }
 
 }  // namespace stirling

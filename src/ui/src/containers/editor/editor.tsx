@@ -17,19 +17,25 @@
  */
 
 import * as React from 'react';
-import { CodeEditor, LazyPanel, ResizableDrawer } from '@pixie-labs/components';
+import {
+  CodeEditor,
+  EDITOR_THEME_MAP,
+  LazyPanel,
+  ResizableDrawer,
+} from 'app/components';
 
 import {
-  makeStyles, Theme, withStyles,
+  makeStyles, Theme, withStyles, useTheme,
 } from '@material-ui/core/styles';
-import { createStyles } from '@material-ui/styles';
 import Tab from '@material-ui/core/Tab';
 import Tabs from '@material-ui/core/Tabs';
 import ChevronRight from '@material-ui/icons/ChevronRight';
+import { createStyles } from '@material-ui/styles';
 
-import { getKeyMap } from 'containers/live/shortcuts';
-import { LayoutContext } from 'context/layout-context';
-import { ScriptContext } from 'context/script-context';
+import { getKeyMap } from 'app/containers/live/shortcuts';
+import { LayoutContext } from 'app/context/layout-context';
+import { ScriptContext } from 'app/context/script-context';
+import { EditorContext } from 'app/context/editor-context';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
   root: {
@@ -78,27 +84,27 @@ const shortcutKeys = Object.values(getKeyMap()).map((keyBinding) => keyBinding.s
 
 const VisEditor = ({ visible }: { visible: boolean }) => {
   const classes = useStyles();
-  const { visJSON, setVisEditorText } = React.useContext(ScriptContext);
+  const { script } = React.useContext(ScriptContext);
+  const { setVisEditorText } = React.useContext(EditorContext);
 
   const editorRef = React.createRef<CodeEditor>();
   // We useEffect instead of relying on the prop because of an issue where a cursor
   // in the field causes onChange to be triggered partway through, leading to a
   // partial state being set.
   React.useEffect(() => {
-    if (!editorRef.current) {
+    if (!editorRef.current && !script) {
       return;
     }
-
-    editorRef.current.changeEditorValue(visJSON);
+    editorRef.current.changeEditorValue(JSON.stringify(script.vis, undefined, 4));
+    // Don't use editorRef because as a dep because the object is updated on each
+    // key typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visJSON]);
+  }, [script]);
 
   return (
     <CodeEditor
       ref={editorRef}
-      onChange={(code: string) => {
-        setVisEditorText(code);
-      }}
+      onChange={setVisEditorText}
       className={classes.editor}
       visible={visible}
       spinnerClass={classes.spinner}
@@ -108,33 +114,37 @@ const VisEditor = ({ visible }: { visible: boolean }) => {
   );
 };
 
-const ScriptEditor = ({ visible }: { visible: boolean }) => {
+const PxLEditor = ({ visible }: { visible: boolean }) => {
   const classes = useStyles();
-  const { pxl, setPxlEditorText } = React.useContext(ScriptContext);
+  const { script } = React.useContext(ScriptContext);
+  const { setPxlEditorText } = React.useContext(EditorContext);
   const editorRef = React.createRef<CodeEditor>();
+  const theme = useTheme();
+
   // We useEffect instead of relying on the prop because of an issue where a cursor
   // in the field causes onChange to be triggered partway through, leading to a
   // partial state being set.
-  // TODO(philkuz) need to update the props above so that we re-render the editor less often.
   React.useEffect(() => {
-    if (!editorRef.current) {
+    if (!editorRef.current || !script) {
       return;
     }
-    editorRef.current.changeEditorValue(pxl);
+
+    editorRef.current.changeEditorValue(script.code);
+    // Don't use editorRef because as a dep because the object is updated on each
+    // key typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pxl]);
+  }, [script]);
 
   return (
     <CodeEditor
       ref={editorRef}
-      onChange={(code: string) => {
-        setPxlEditorText(code);
-      }}
+      onChange={setPxlEditorText}
       className={classes.editor}
       visible={visible}
       spinnerClass={classes.spinner}
       shortcutKeys={shortcutKeys}
       language='python'
+      theme={EDITOR_THEME_MAP[theme.palette.mode]}
     />
   );
 };
@@ -160,12 +170,12 @@ const StyledTab = withStyles((theme: Theme) => createStyles({
 const LiveViewEditor = ({ visible }: { visible: boolean }) => {
   const classes = useStyles();
   const [tab, setTab] = React.useState('pixie');
-  const { setEditorPanelOpen, editorPanelOpen } = React.useContext(LayoutContext);
+  const { setEditorPanelOpen } = React.useContext(LayoutContext);
   const closeEditor = () => setEditorPanelOpen(false);
 
   return (
     <div className={classes.root}>
-      <LazyPanel show={editorPanelOpen} className={classes.rootPanel}>
+      <LazyPanel show={visible} className={classes.rootPanel}>
         <div className={classes.tabs}>
           <StyledTabs
             value={tab}
@@ -179,7 +189,7 @@ const LiveViewEditor = ({ visible }: { visible: boolean }) => {
           </div>
         </div>
         <LazyPanel className={classes.panel} show={tab === 'pixie'}>
-          <ScriptEditor visible={visible && tab === 'pixie'} />
+          <PxLEditor visible={visible && tab === 'pixie'} />
         </LazyPanel>
         <LazyPanel className={classes.panel} show={tab === 'vis'}>
           <VisEditor visible={visible && tab === 'vis'} />
@@ -189,13 +199,14 @@ const LiveViewEditor = ({ visible }: { visible: boolean }) => {
   );
 };
 
-export const EditorSplitPanel = (props) => {
+export const EditorSplitPanel: React.FC = (props) => {
   const { editorPanelOpen } = React.useContext(LayoutContext);
 
   return (
     <ResizableDrawer
       drawerDirection='right'
       initialSize={850}
+      minSize={25}
       open={editorPanelOpen}
       otherContent={props.children}
       overlay

@@ -107,8 +107,28 @@ namespace {
 
 constexpr size_t kMaxConnTrackerPoolSize = 2048;
 
-uint64_t GetConnMapKey(uint32_t pid, uint32_t fd) {
-  return (static_cast<uint64_t>(pid) << 32) | fd;
+uint64_t GetConnMapKey(uint32_t pid, int32_t fd) { return (static_cast<uint64_t>(pid) << 32) | fd; }
+
+std::optional<ConnTrackersManager::StatKey> GetStatKeyForProtocol(TrafficProtocol protocol) {
+#define CASE(protocol) \
+  case protocol:       \
+    return ConnTrackersManager::StatKey::protocol;
+  switch (protocol) {
+    CASE(kProtocolUnknown)
+    CASE(kProtocolHTTP)
+    CASE(kProtocolHTTP2)
+    CASE(kProtocolMySQL)
+    CASE(kProtocolCQL)
+    CASE(kProtocolPGSQL)
+    CASE(kProtocolDNS)
+    CASE(kProtocolRedis)
+    CASE(kProtocolMongo)
+    CASE(kProtocolKafka)
+    case kNumProtocols:
+      return std::nullopt;
+  }
+#undef CASE
+  return std::nullopt;
 }
 
 }  // namespace
@@ -123,17 +143,19 @@ ConnTracker& ConnTrackersManager::GetOrCreateConnTracker(struct conn_id_t conn_i
   auto [conn_tracker_ptr, created] = conn_trackers.GetOrCreate(conn_id.tsid, &trackers_pool_);
 
   if (created) {
-    ++num_trackers_;
     active_trackers_.push_back(conn_tracker_ptr);
     conn_tracker_ptr->manager_ = this;
     conn_tracker_ptr->SetConnID(conn_id);
+
+    stats_.Increment(StatKey::kTotal);
+    stats_.Increment(StatKey::kCreated);
   }
 
   DebugChecks();
   return *conn_tracker_ptr;
 }
 
-StatusOr<const ConnTracker*> ConnTrackersManager::GetConnTracker(uint32_t pid, uint32_t fd) const {
+StatusOr<const ConnTracker*> ConnTrackersManager::GetConnTracker(uint32_t pid, int32_t fd) const {
   const uint64_t conn_map_key = GetConnMapKey(pid, fd);
 
   auto tracker_set_it = conn_id_tracker_generations_.find(conn_map_key);
@@ -160,7 +182,7 @@ void ConnTrackersManager::CleanupTrackers() {
       const auto& tracker = *iter;
       if (tracker->ReadyForDestruction()) {
         active_trackers_.erase(iter++);
-        ++num_trackers_ready_for_destruction_;
+        stats_.Increment(StatKey::kReadyForDestruction);
       } else {
         ++iter;
       }
@@ -170,7 +192,8 @@ void ConnTrackersManager::CleanupTrackers() {
   // As a performance optimization, we only clean up trackers once we reach a certain threshold
   // of trackers that are ready for destruction.
   // Trade-off is just how quickly we release memory and BPF map entries.
-  double percent_destroyable = 1.0 * num_trackers_ready_for_destruction_ / num_trackers_;
+  double percent_destroyable =
+      1.0 * stats_.Get(StatKey::kReadyForDestruction) / stats_.Get(StatKey::kTotal);
   if (percent_destroyable > FLAGS_stirling_conn_tracker_cleanup_threshold) {
     // Outer loop iterates through tracker sets (keyed by PID+FD),
     // while inner loop iterates through generations of trackers for that PID+FD pair.
@@ -180,11 +203,13 @@ void ConnTrackersManager::CleanupTrackers() {
 
       int num_erased = tracker_generations.CleanupGenerations(&trackers_pool_);
 
-      num_trackers_ -= num_erased;
-      num_trackers_ready_for_destruction_ -= num_erased;
+      stats_.Decrement(StatKey::kTotal, num_erased);
+      stats_.Decrement(StatKey::kReadyForDestruction, num_erased);
+      stats_.Increment(StatKey::kDestroyed, num_erased);
 
       if (tracker_generations.empty()) {
         conn_id_tracker_generations_.erase(iter++);
+        stats_.Increment(StatKey::kDestroyedGens);
       } else {
         ++iter;
       }
@@ -195,21 +220,45 @@ void ConnTrackersManager::CleanupTrackers() {
 }
 
 void ConnTrackersManager::DebugChecks() const {
-  DCHECK_EQ(num_trackers_, active_trackers_.size() + num_trackers_ready_for_destruction_);
+  DCHECK_EQ(stats_.Get(StatKey::kTotal),
+            active_trackers_.size() + stats_.Get(StatKey::kReadyForDestruction));
 }
 
 std::string ConnTrackersManager::DebugInfo() const {
   std::string out;
 
-  out += absl::Substitute("trackers: allocated=$0 active=$1\n", num_trackers_,
-                          active_trackers_.size());
+  absl::StrAppend(&out, "ConnTracker count statistics: ", StatsString(),
+                  "\nDetailed statistics of individual ConnTracker:\n");
+
   for (const auto& tracker : active_trackers_) {
-    out +=
-        absl::Substitute("  conn_tracker=$0 zombie=$1 ready_for_destruction=$2\n",
-                         tracker->ToString(), tracker->IsZombie(), tracker->ReadyForDestruction());
+    absl::StrAppend(&out, absl::Substitute("  conn_tracker=$0 zombie=$1 ready_for_destruction=$2\n",
+                                           tracker->ToString(), tracker->IsZombie(),
+                                           tracker->ReadyForDestruction()));
   }
 
   return out;
+}
+
+std::string ConnTrackersManager::StatsString() const { return stats_.Print(); }
+
+void ConnTrackersManager::ComputeProtocolStats() {
+  absl::flat_hash_map<TrafficProtocol, int> protocol_count;
+  for (const auto* tracker : active_trackers_) {
+    ++protocol_count[tracker->protocol()];
+  }
+  for (auto protocol : magic_enum::enum_values<TrafficProtocol>()) {
+    auto protocol_stat_key_opt = GetStatKeyForProtocol(protocol);
+    if (!protocol_stat_key_opt.has_value()) {
+      continue;
+    }
+    auto protocol_stat_key = protocol_stat_key_opt.value();
+    stats_.Reset(protocol_stat_key);
+
+    auto iter = protocol_count.find(protocol);
+    if (iter != protocol_count.end()) {
+      stats_.Increment(protocol_stat_key, iter->second);
+    }
+  }
 }
 
 }  // namespace stirling

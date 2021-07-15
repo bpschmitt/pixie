@@ -30,34 +30,22 @@ import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
-import AnnouncementIcon from '@material-ui/icons/Announcement';
-import Menu from '@material-ui/icons/Menu';
-import MenuItem from '@material-ui/core/MenuItem';
+import CampaignIcon from '@material-ui/icons/Campaign';
 import Tooltip from '@material-ui/core/Tooltip';
 
 import { Link } from 'react-router-dom';
 
-import { ClusterContext } from 'common/cluster-context';
-import UserContext from 'common/user-context';
-import KeyboardIcon from '@material-ui/icons/Keyboard';
+import { ClusterContext } from 'app/common/cluster-context';
+import UserContext from 'app/common/user-context';
 import {
-  Avatar, ProfileMenuWrapper,
-  ClusterIcon, CodeIcon, DocsIcon,
-  LogoutIcon, NamespaceIcon, SettingsIcon,
-  PixieLogo,
-} from '@pixie-labs/components';
-import { toEntityPathname, LiveViewPage } from 'containers/live-widgets/utils/live-view-params';
+  ClusterIcon, DocsIcon, NamespaceIcon,
+} from 'app/components';
+import { toEntityPathname, LiveViewPage } from 'app/containers/live-widgets/utils/live-view-params';
 import {
   DOMAIN_NAME, ANNOUNCEMENT_ENABLED,
   ANNOUNCE_WIDGET_URL, CONTACT_ENABLED,
-} from 'containers/constants';
-import { LiveShortcutsContext } from 'containers/live/shortcuts';
-import { SidebarContext } from 'context/sidebar-context';
-import { LiveTourContext, LiveTourDialog } from 'containers/App/live-tour';
-import ExploreIcon from '@material-ui/icons/Explore';
-import { useSetting, useUserInfo } from '@pixie-labs/api-react';
-import { LayoutContext } from 'context/layout-context';
-import { Button } from '@material-ui/core';
+} from 'app/containers/constants';
+import { SidebarFooter } from 'configurable/sidebar-footer';
 
 const styles = (
   {
@@ -70,11 +58,8 @@ const styles = (
     '& .announcekit-widget-badge': {
       position: 'absolute !important',
       top: spacing(2),
-      left: spacing(4),
+      left: spacing(5),
     },
-  },
-  docked: {
-    position: 'absolute',
   },
   drawerClose: {
     borderRightWidth: spacing(0.2),
@@ -84,9 +69,8 @@ const styles = (
       duration: transitions.duration.leavingScreen,
     }),
     width: spacing(8),
-    zIndex: 1000,
+    zIndex: 1250,
     overflowX: 'hidden',
-    paddingBottom: spacing(2),
     [breakpoints.down('sm')]: {
       display: 'none',
     },
@@ -102,7 +86,7 @@ const styles = (
     borderRightWidth: spacing(0.2),
     borderRightStyle: 'solid',
     width: spacing(29),
-    zIndex: 1000,
+    zIndex: 1250,
     flexShrink: 0,
     whiteSpace: 'nowrap',
     transition: transitions.create('width', {
@@ -110,7 +94,6 @@ const styles = (
       duration: transitions.duration.enteringScreen,
     }),
     overflowX: 'hidden',
-    paddingBottom: spacing(2),
   },
   expandedProfile: {
     flexDirection: 'column',
@@ -119,6 +102,12 @@ const styles = (
     paddingLeft: spacing(2.5),
     paddingTop: spacing(1),
     paddingBottom: spacing(1),
+    '& > div': {
+      color: palette.text.primary,
+    },
+  },
+  clippedItem: {
+    height: spacing(6),
   },
   pixieLogo: {
     fill: palette.primary.main,
@@ -158,7 +147,7 @@ const styles = (
 const SideBarInternalLinkItem = ({
   classes, icon, link, text,
 }) => (
-  <Tooltip title={text}>
+  <Tooltip title={text} disableInteractive>
     <ListItem button component={Link} to={link} key={text} className={classes.listIcon}>
       <ListItemIcon>{icon}</ListItemIcon>
       <ListItemText primary={text} />
@@ -169,7 +158,7 @@ const SideBarInternalLinkItem = ({
 const SideBarExternalLinkItem = ({
   classes, icon, link, text,
 }) => (
-  <Tooltip title={text}>
+  <Tooltip title={text} disableInteractive>
     <ListItem button component='a' href={link} key={text} className={classes.listIcon} target='_blank'>
       <ListItemIcon>{icon}</ListItemIcon>
       <ListItemText primary={text} />
@@ -177,62 +166,46 @@ const SideBarExternalLinkItem = ({
   </Tooltip>
 );
 
-const HamburgerMenu = ({ classes, onToggle, logoLinkTo }) => (
-  <ListItem button onClick={onToggle} key='Menu' className={classes.listIcon}>
-    <ListItemIcon>
-      <Menu />
-    </ListItemIcon>
-    <ListItemIcon>
-      <Button
-        component={Link}
-        disabled={window.location.pathname.startsWith(logoLinkTo)}
-        to={logoLinkTo}
-        variant='text'
-      >
-        <PixieLogo className={classes.pixieLogo} />
-      </Button>
-    </ListItemIcon>
-  </ListItem>
-);
-
-const SideBar = ({ classes, open, toggle }) => {
-  const { selectedClusterName } = React.useContext(ClusterContext);
+const SideBar = ({ classes, open }) => {
+  const clusterContext = React.useContext(ClusterContext);
   const { user } = React.useContext(UserContext);
-  const [{ user: userInfo }] = useUserInfo();
 
-  const navItems = React.useMemo(() => (
-    [{
+  const navItems = React.useMemo(() => {
+    if (!clusterContext) {
+      return [];
+    }
+    return [{
       icon: <ClusterIcon />,
-      link: toEntityPathname({ params: {}, clusterName: selectedClusterName, page: LiveViewPage.Cluster }),
+      link: toEntityPathname({
+        params: {},
+        clusterName: clusterContext?.selectedClusterName,
+        page: LiveViewPage.Cluster,
+      }, false),
       text: 'Cluster',
     },
     {
       icon: <NamespaceIcon />,
-      link: toEntityPathname({ params: {}, clusterName: selectedClusterName, page: LiveViewPage.Namespaces }),
+      link: toEntityPathname({
+        params: {},
+        clusterName: clusterContext?.selectedClusterName,
+        page: LiveViewPage.Namespaces,
+      }, false),
       text: 'Namespaces',
-    }]
+    }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [selectedClusterName]);
+  }, [clusterContext?.selectedClusterName]);
 
   return (
     <>
-      <div className={classes.compactHamburger}>
-        <ListItem button onClick={toggle} key='Menu' className={classes.listIcon}>
-          <ListItemIcon>
-            <Menu />
-          </ListItemIcon>
-        </ListItem>
-      </div>
       <Drawer
         variant='permanent'
         className={open ? classes.drawerOpen : classes.drawerClose}
         classes={{
           paper: open ? classes.drawerOpen : classes.drawerClose,
-          docked: classes.docked,
         }}
       >
         <List>
-          <HamburgerMenu key='Menu' classes={classes} onToggle={toggle} logoLinkTo='/live' />
+          <ListItem button className={classes.clippedItem} />
         </List>
         <List>
           {navItems.map(({ icon, link, text }) => (
@@ -241,7 +214,7 @@ const SideBar = ({ classes, open, toggle }) => {
         </List>
         <div className={classes.spacer} />
         <List>
-          <Tooltip title='Announcements'>
+          <Tooltip title='Announcements' disableInteractive>
             <div className={classes.announcekit}>
               {
                 ANNOUNCEMENT_ENABLED && (
@@ -260,7 +233,7 @@ const SideBar = ({ classes, open, toggle }) => {
                    }
                 >
                   <ListItem button key='announcements' className={classes.listIcon}>
-                    <ListItemIcon><AnnouncementIcon /></ListItemIcon>
+                    <ListItemIcon><CampaignIcon /></ListItemIcon>
                     <ListItemText primary='Announcements' />
                   </ListItem>
                 </AnnounceKit>
@@ -275,14 +248,15 @@ const SideBar = ({ classes, open, toggle }) => {
             link={`https://docs.${DOMAIN_NAME}`}
             text='Docs'
           />
-          { CONTACT_ENABLED && (
-            <Tooltip title='Help'>
+          {CONTACT_ENABLED && (
+            <Tooltip title='Help' disableInteractive>
               <ListItem button id='intercom-trigger' className={classes.listIcon}>
                 <ListItemIcon><HelpIcon /></ListItemIcon>
                 <ListItemText primary='Help' />
               </ListItem>
             </Tooltip>
           )}
+          <SidebarFooter />
         </List>
       </Drawer>
     </>

@@ -16,125 +16,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { SCRATCH_SCRIPT, ScriptsContext } from 'containers/App/scripts-context';
 import * as React from 'react';
-import urlParams from 'utils/url-params';
-import { containsMutation } from '@pixie-labs/api';
+import { ClusterContext } from 'app/common/cluster-context';
+import { ScriptContext } from 'app/context/script-context';
+import { useSnackbar } from 'app/components';
 
-import { ScriptContext } from 'context/script-context';
-import { ResultsContext } from 'context/results-context';
-import { argsForVis } from 'utils/args-utils';
-import {
-  LiveViewPage,
-  LiveViewPageScriptIds,
-  matchLiveViewEntity,
-} from 'containers/live-widgets/utils/live-view-params';
-
-type LoadScriptState = 'unloaded' | 'url-loaded' | 'url-skipped' | 'context-loaded';
-
-export function ScriptLoader(): null {
-  const [loadState, setLoadState] = React.useState<LoadScriptState>('unloaded');
-  const { scripts, loading: loadingScripts } = React.useContext(ScriptsContext);
+/**
+ * Automatically runs the selected script whenever it changes, the args change, or the vis spec changes.
+ * @constructor
+ */
+export const ScriptLoader: React.FC = () => {
   const {
-    pxl, vis, args, id,
-    liveViewPage, setScript, execute, parseVisOrShowError, argsForVisOrShowError, readyToExecute,
+    script, args, execute, cancelExecution, manual,
   } = React.useContext(ScriptContext);
+  const { selectedClusterName: clusterName } = React.useContext(ClusterContext);
 
-  const { clearResults } = React.useContext(ResultsContext);
-  const ref = React.useRef({
-    urlLoaded: false,
-    execute,
-  });
+  const showSnackbar = useSnackbar();
 
-  ref.current.execute = execute;
+  // Sorting keys to ensure stability between identical objects when the route might change their ordering.
+  // Sorting the keys in this way loses nested properties, so we're only doing it for args (vis is already stable).
+  const serializedArgs = JSON.stringify(args, Object.keys(args ?? {}).sort());
+  const serializedVis = JSON.stringify(script?.vis);
 
-  // Execute the default scripts if script was not loaded from the URL.
   React.useEffect(() => {
-    if (loadState === 'url-skipped' && pxl && vis) {
-      execute({
-        pxl,
-        vis,
-        args,
-        id,
-        liveViewPage,
-      });
-      setLoadState('context-loaded');
+    // Wait for everything to be set first.
+    if (script == null || args == null) return;
+    cancelExecution?.();
+
+    if (
+      script
+      && serializedArgs
+    ) {
+      try {
+        execute();
+      } catch (e) {
+        showSnackbar({ message: `Could not execute script: ${e.message}` });
+      }
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [execute, loadState, pxl, vis]);
+  }, [script, serializedArgs, serializedVis, clusterName, manual]);
 
-  React.useEffect(() => {
-    const subscription = urlParams.onChange.subscribe((urlInfo) => {
-      if (!readyToExecute || loadingScripts) return;
-
-      const { pathname } = urlInfo;
-      const urlArgs = urlInfo.args;
-      const urlScriptId = urlInfo.scriptId;
-
-      let entityPage;
-      let entityParams;
-
-      // default live view page should be px/cluster.
-      if ((pathname === '/live' || pathname === '/') && !pxl) {
-        entityPage = LiveViewPage.Cluster;
-        entityParams = {};
-      } else {
-        const entity = matchLiveViewEntity(pathname);
-        entityPage = entity.page;
-        entityParams = entity.params;
-      }
-
-      const selectedId = entityPage === LiveViewPage.Default ? urlScriptId : LiveViewPageScriptIds.get(entityPage);
-
-      if (!scripts.has(selectedId)) {
-        setLoadState((state) => {
-          if (state !== 'unloaded') {
-            return state;
-          }
-          return 'url-skipped';
-        });
-        return;
-      }
-
-      const script = scripts.get(selectedId);
-      const parsedVis = parseVisOrShowError(script.vis);
-      const parsedArgs = argsForVis(parsedVis, { ...urlArgs, ...entityParams }, selectedId);
-      if (!parsedVis && !parsedArgs) {
-        return;
-      }
-
-      const execArgs = {
-        liveViewPage: entityPage,
-        pxl: script.code,
-        vis: parsedVis,
-        args: parsedArgs,
-        id: selectedId,
-        skipURLUpdate: true,
-      };
-      clearResults();
-      setScript(execArgs.vis, execArgs.pxl, execArgs.args, execArgs.id, execArgs.liveViewPage);
-
-      // Use this hack because otherwise args are not set when you first load a page.
-      if (!argsForVisOrShowError(parsedVis, { ...urlArgs, ...entityParams }, selectedId)) {
-        return;
-      }
-      // The Scratch Pad script starts with just comments and no code. Running that would be an error.
-      if (script.id === SCRATCH_SCRIPT.id) return;
-
-      if (!containsMutation(execArgs.pxl)) {
-        ref.current.execute(execArgs);
-      }
-      setLoadState((state) => {
-        if (state !== 'unloaded') {
-          return state;
-        }
-        return 'url-loaded';
-      });
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scripts, loadingScripts, readyToExecute]);
   return null;
-}
+};

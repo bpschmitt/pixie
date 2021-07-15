@@ -59,17 +59,14 @@ static constexpr DataElement kMySQLElements[] = {
          types::PatternType::GENERAL},
         canonical_data_elements::kLatencyNS,
 #ifndef NDEBUG
-        {"px_info_", "Pixie messages regarding the record (e.g. warnings)",
-         types::DataType::STRING,
-         types::SemanticType::ST_NONE,
-         types::PatternType::GENERAL},
+        canonical_data_elements::kPXInfo,
 #endif
 };
 // clang-format on
 
 static constexpr auto kMySQLTable =
-    DataTableSchema("mysql_events", "MySQL resquest-response pair events", kMySQLElements,
-                    std::chrono::milliseconds{100}, std::chrono::milliseconds{1000});
+    DataTableSchema("mysql_events", "MySQL resquest-response pair events", kMySQLElements);
+DEFINE_PRINT_TABLE(MySQL)
 
 constexpr int kMySQLTimeIdx = kMySQLTable.ColIndex("time_");
 constexpr int kMySQLUPIDIdx = kMySQLTable.ColIndex("upid");

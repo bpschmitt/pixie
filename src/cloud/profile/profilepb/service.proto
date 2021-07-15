@@ -31,6 +31,7 @@ service ProfileService {
   rpc CreateUser(CreateUserRequest) returns (px.uuidpb.UUID);
   rpc GetUser(px.uuidpb.UUID) returns (UserInfo);
   rpc GetUserByEmail(GetUserByEmailRequest) returns (UserInfo);
+  rpc GetUserByAuthProviderID(GetUserByAuthProviderIDRequest) returns (UserInfo);
   // Creates the initial organization with the specified user as the owner.
   rpc CreateOrgAndUser(CreateOrgAndUserRequest) returns (CreateOrgAndUserResponse);
   rpc GetOrg(px.uuidpb.UUID) returns (OrgInfo);
@@ -42,8 +43,10 @@ service ProfileService {
   // Calls for handling user settings.
   rpc GetUserSettings(GetUserSettingsRequest) returns (GetUserSettingsResponse);
   rpc UpdateUserSettings(UpdateUserSettingsRequest) returns (UpdateUserSettingsResponse);
-  // Create a new account for the user's org and return an invite link. Errors out if the account
-  // already exists.
+  // Calls for handling user attributes.
+  rpc GetUserAttributes(GetUserAttributesRequest) returns (GetUserAttributesResponse);
+  rpc SetUserAttributes(SetUserAttributesRequest) returns (SetUserAttributesResponse);
+  // Create a new account for the user's org and return an invite link.
   rpc InviteUser(InviteUserRequest) returns (InviteUserResponse);
 }
 
@@ -59,10 +62,18 @@ message UserInfo {
   string email = 6;
   string profile_picture = 7;
   bool is_approved = 8;
+  string identity_provider = 9;
+  // The auth_provider_id is the user ID that an auth_provider uses for an ID of the corresponding user.
+  string auth_provider_id = 10 [(gogoproto.customname) = "AuthProviderID"];
 }
 
 message GetUserByEmailRequest {
   string email = 1;
+}
+
+message GetUserByAuthProviderIDRequest {
+  // The auth_provider_id is the user ID that an auth_provider uses for an ID of the corresponding user.
+  string auth_provider_id = 1 [(gogoproto.customname) = "AuthProviderID"];
 }
 
 // OrgInfo contains information about a company in our system.
@@ -84,6 +95,9 @@ message CreateUserRequest {
   string first_name = 3;
   string last_name = 4;
   string email = 5;
+  string identity_provider = 6;
+  // The auth_provider_id is the user ID that an auth_provider uses for an ID of the corresponding user.
+  string auth_provider_id = 7 [(gogoproto.customname) = "AuthProviderID"];
 }
 
 message CreateOrgAndUserRequest {
@@ -96,6 +110,9 @@ message CreateOrgAndUserRequest {
     string first_name = 2;
     string last_name = 3;
     string email = 4;
+    string identity_provider = 5;
+    // The auth_provider_id is the user ID that an auth_provider uses for an ID of the corresponding user.
+    string auth_provider_id = 6 [(gogoproto.customname) = "AuthProviderID"];
   }
   Org org = 1;
   User user = 2;
@@ -137,26 +154,24 @@ message UpdateOrgRequest {
 message GetUserSettingsRequest {
   // The ID of the user.
   px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
-  // The user setting keys to fetch.
-  repeated string keys = 2;
+  reserved 2; // DEPRECATED
 }
 
 // The response for a UserSettingsRequest.
 message GetUserSettingsResponse {
-  // The keys fetched in the user settings request.
-  repeated string keys = 1;
-  // The corresponding values to the user settings keys.
-  repeated string values = 2;
+  // Settings for users key-value. 
+  reserved 1; // DEPRECATED
+  reserved 2; // DEPRECATED
+  bool analytics_optout = 3; 
 }
 
 // A request to update the user settings for a particular user.
 message UpdateUserSettingsRequest {
   // The ID of the user.
   px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
-  // The user setting keys to set.
-  repeated string keys = 2;
-  // The corresponding values to set. Must be the same length as the number of keys.
-  repeated string values = 3;
+  reserved 2; // DEPRECATED
+  reserved 3; // DEPRECATED
+  google.protobuf.BoolValue analytics_optout = 4;
 }
 
 // UpdateUserSettingsResponse is the response to an UpdateUserSettingsRequest.
@@ -164,6 +179,27 @@ message UpdateUserSettingsResponse {
   // Whether the update was successful.
   bool ok = 1 [(gogoproto.customname) = "OK"];
 }
+
+// A request to get user attributes for the given user.
+message GetUserAttributesRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+}
+
+// The response for a GetUserAttributes call.
+message GetUserAttributesResponse {
+  bool tour_seen = 1;
+}
+
+// A request to set user attributes for the given user.
+message SetUserAttributesRequest {
+  // The ID of the user.
+  px.uuidpb.UUID id = 1 [(gogoproto.customname) = "ID"];
+  google.protobuf.BoolValue tour_seen = 2;
+}
+
+// The response for a SetUserAttributes call.
+message SetUserAttributesResponse {}
 
 message InviteUserRequest {
 	string email = 1;
@@ -173,6 +209,7 @@ message InviteUserRequest {
   // The ID of the organization to create the user for.
   px.uuidpb.UUID org_id = 4 [(gogoproto.customname) = "OrgID"];
   bool must_create_user = 5;
+  string identity_provider = 6;
 }
 
 message InviteUserResponse {

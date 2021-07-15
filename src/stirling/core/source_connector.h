@@ -26,7 +26,7 @@
 #include "src/shared/types/types.h"
 #include "src/stirling/core/connector_context.h"
 #include "src/stirling/core/data_table.h"
-#include "src/stirling/core/utils.h"
+#include "src/stirling/core/frequency_manager.h"
 
 /**
  * These are the steps to follow to add a new data source connector.
@@ -36,8 +36,6 @@
  *    In this function create an InfoClassSchema (vector of DataElement)
  * 3. Register the data source in the appropriate registry.
  */
-
-DECLARE_bool(stirling_source_connector_output_multiple_data_tables);
 
 namespace px {
 namespace stirling {
@@ -60,20 +58,16 @@ class SourceConnector : public NotCopyable {
   void InitContext(ConnectorContext* ctx);
 
   /**
-   * Transfers any collected data, for the specified table, into the provided record_batch.
-   * @param ctx Shared context, e.g. ASID & tracked PIDs.
-   * @param table_num The table number (id) of the data. See DataTableSchemas in individual
-   * connectors.
-   * @param data_table Destination for the data.
-   */
-  void TransferData(ConnectorContext* ctx, uint32_t table_num, DataTable* data_table);
-
-  /**
    * Transfers all collected data to data tables.
    * @param ctx Shared context, e.g. ASID & tracked PIDs.
    * @param data_tables Map from the table number to DataTable objects.
    */
   void TransferData(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables);
+
+  /**
+   * Pushes data in data tables into table store.
+   */
+  void PushData(DataPushCallback agent_callback, const std::vector<DataTable*>& data_tables);
 
   /**
    * Stops the source connector and releases any acquired resources.
@@ -83,24 +77,9 @@ class SourceConnector : public NotCopyable {
    */
   Status Stop();
 
-  /**
-   * If true, the overlaoded TransferData() is implemented, and the sampled data can be output to
-   * multiple data tables.
-   *
-   * This is temporary, will be removed once all SouceConnector subclasses are changed to output
-   * data to multiple data tables.
-   */
-  virtual bool output_multi_tables() const { return false; }
-
   const std::string& name() const { return source_name_; }
 
-  uint32_t num_tables() const { return table_schemas_.size(); }
-
-  const DataTableSchema& TableSchema(uint32_t table_num) const {
-    DCHECK_LT(table_num, num_tables())
-        << absl::Substitute("Access to table out of bounds: table_num=$0", table_num);
-    return table_schemas_[table_num];
-  }
+  const ArrayView<DataTableSchema>& table_schemas() const { return table_schemas_; }
 
   static constexpr uint32_t TableNum(ArrayView<DataTableSchema> tables,
                                      const DataTableSchema& key) {
@@ -124,18 +103,12 @@ class SourceConnector : public NotCopyable {
    */
   uint64_t ClockRealTimeOffset() const { return sysconfig_.ClockRealTimeOffset(); }
 
-  uint64_t AdjustedSteadyClockNowNS() const {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count() +
-           ClockRealTimeOffset();
-  }
-
-  const SamplePushFrequencyManager& sample_push_mgr() const { return sample_push_freq_mgr_; }
-  SamplePushFrequencyManager* mutable_sample_push_mgr() { return &sample_push_freq_mgr_; }
-
   virtual void SetDebugLevel(int level) { debug_level_ = level; }
   virtual void EnablePIDTrace(int pid) { pids_to_trace_.insert(pid); }
   virtual void DisablePIDTrace(int pid) { pids_to_trace_.erase(pid); }
+
+  const FrequencyManager& sampling_freq_mgr() const { return sampling_freq_mgr_; }
+  const FrequencyManager& push_freq_mgr() const { return push_freq_mgr_; }
 
  protected:
   explicit SourceConnector(std::string_view source_name,
@@ -148,12 +121,7 @@ class SourceConnector : public NotCopyable {
   // SourceConnectors only need override if action is required on the initial context.
   virtual void InitContextImpl(ConnectorContext* /* ctx */) {}
 
-  virtual void TransferDataImpl(ConnectorContext* ctx, uint32_t table_num,
-                                DataTable* data_table) = 0;
-  virtual void TransferDataImpl(ConnectorContext*, const std::vector<DataTable*>&) {
-    // TODO(yzhao): Change to pure virtual function after all subclasses are updated.
-    LOG(DFATAL) << "TransferStreams() Unimplemented";
-  }
+  virtual void TransferDataImpl(ConnectorContext*, const std::vector<DataTable*>&) = 0;
 
   virtual Status StopImpl() = 0;
 
@@ -171,7 +139,8 @@ class SourceConnector : public NotCopyable {
 
   const system::Config& sysconfig_ = system::Config::GetInstance();
 
-  SamplePushFrequencyManager sample_push_freq_mgr_;
+  FrequencyManager sampling_freq_mgr_;
+  FrequencyManager push_freq_mgr_;
 
   // Debug members.
   int debug_level_ = 0;

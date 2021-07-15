@@ -31,6 +31,30 @@ type APIKeyMgr interface {
 	FetchOrgUserIDUsingAPIKey(ctx context.Context, key string) (uuid.UUID, uuid.UUID, error)
 }
 
+// UserInfo contains all the info about a user. It's not tied to any specific AuthProvider.
+type UserInfo struct {
+	Email            string
+	FirstName        string
+	LastName         string
+	Name             string
+	Picture          string
+	PLUserID         string
+	PLOrgID          string
+	IdentityProvider string
+	AuthProviderID   string
+}
+
+// CreateInviteLinkResponse contaions the InviteLink and any accompanying information.
+type CreateInviteLinkResponse struct {
+	InviteLink string
+}
+
+// CreateIdentityResponse contains relevant information about the Identity that was created.
+type CreateIdentityResponse struct {
+	IdentityProvider string
+	AuthProviderID   string
+}
+
 // AuthProvider interfaces the service we use for auth.
 type AuthProvider interface {
 	// GetUserIDFromToken returns the UserID for the particular auth token.
@@ -39,6 +63,10 @@ type AuthProvider interface {
 	GetUserInfo(userID string) (*UserInfo, error)
 	// SetPLMetadata sets the pixielabs related metadata in the auth provider.
 	SetPLMetadata(userID, plOrgID, plUserID string) error
+	// CreateInviteLinkForIdentity creates an invite link for the specific user, identified by the AuthProviderID.
+	CreateInviteLink(authProviderID string) (*CreateInviteLinkResponse, error)
+	// CreateIdentity will create an identity for the corresponding email.
+	CreateIdentity(email string) (*CreateIdentityResponse, error)
 }
 
 // Server defines an gRPC server type.

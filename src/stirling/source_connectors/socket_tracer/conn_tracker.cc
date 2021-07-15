@@ -103,10 +103,6 @@ void ConnTracker::AddConnOpenEvent(const conn_event_t& conn_event, uint64_t time
   CONN_TRACE(1) << absl::Substitute("conn_open af=$0 addr=$1",
                                     magic_enum::enum_name(open_info_.remote_addr.family),
                                     open_info_.remote_addr.AddrStr());
-
-  if (ShouldExportToConnStats()) {
-    ExportInitialConnStats();
-  }
 }
 
 void ConnTracker::AddConnCloseEvent(const close_event_t& close_event, uint64_t timestamp_ns) {
@@ -124,23 +120,11 @@ void ConnTracker::AddConnCloseEvent(const close_event_t& close_event, uint64_t t
 }
 
 void ConnTracker::AddDataEvent(std::unique_ptr<SocketDataEvent> event) {
-  bool role_changed = SetRole(event->attr.role, "inferred from data_event");
+  SetRole(event->attr.role, "inferred from data_event");
   SetProtocol(event->attr.protocol, "inferred from data_event");
-
-  // If role has just resolved, it may be time to inform conn stats.
-  if (role_changed && ShouldExportToConnStats()) {
-    ExportInitialConnStats();
-  }
 
   CheckTracker();
   UpdateTimestamps(event->attr.timestamp_ns);
-
-  // Only export metric to conn_stats_ after remote_endpoint has been resolved.
-  if (ShouldExportToConnStats()) {
-    // Export stats to ConnStats object.
-    conn_stats_->AddDataEvent(*this, *event);
-  }
-
   UpdateDataStats(*event);
 
   CONN_TRACE(1) << absl::Substitute("Data event received: $0", event->ToString());
@@ -181,19 +165,19 @@ void ConnTracker::AddConnStats(const conn_stats_event_t& event) {
 
   DCHECK_NE(event.timestamp_ns, last_conn_stats_update_);
   if (event.timestamp_ns > last_conn_stats_update_) {
-    DCHECK_GE(static_cast<int>(event.conn_events & CONN_CLOSE), beta_conn_stats_.closed());
-    DCHECK_GE(static_cast<int>(event.rd_bytes), beta_conn_stats_.bytes_recv());
-    DCHECK_GE(static_cast<int>(event.wr_bytes), beta_conn_stats_.bytes_sent());
+    DCHECK_GE(static_cast<int>(event.conn_events & CONN_CLOSE), conn_stats_.closed());
+    DCHECK_GE(static_cast<int>(event.rd_bytes), conn_stats_.bytes_recv());
+    DCHECK_GE(static_cast<int>(event.wr_bytes), conn_stats_.bytes_sent());
 
-    beta_conn_stats_.set_bytes_recv(event.rd_bytes);
-    beta_conn_stats_.set_bytes_sent(event.wr_bytes);
-    beta_conn_stats_.set_closed(event.conn_events & CONN_CLOSE);
+    conn_stats_.set_bytes_recv(event.rd_bytes);
+    conn_stats_.set_bytes_sent(event.wr_bytes);
+    conn_stats_.set_closed(event.conn_events & CONN_CLOSE);
 
     last_conn_stats_update_ = event.timestamp_ns;
   } else {
-    DCHECK_LE(static_cast<int>(event.conn_events & CONN_CLOSE), beta_conn_stats_.closed());
-    DCHECK_LE(static_cast<int>(event.rd_bytes), beta_conn_stats_.bytes_recv());
-    DCHECK_LE(static_cast<int>(event.wr_bytes), beta_conn_stats_.bytes_sent());
+    DCHECK_LE(static_cast<int>(event.conn_events & CONN_CLOSE), conn_stats_.closed());
+    DCHECK_LE(static_cast<int>(event.rd_bytes), conn_stats_.bytes_recv());
+    DCHECK_LE(static_cast<int>(event.wr_bytes), conn_stats_.bytes_sent());
   }
 }
 
@@ -265,10 +249,7 @@ void ConnTracker::AddHTTP2Header(std::unique_ptr<HTTP2HeaderEvent> hdr) {
 
   if (role_ == kRoleUnknown) {
     EndpointRole role = InferHTTP2Role(write_event, hdr);
-    bool role_changed = SetRole(role, "Inferred from http2 header");
-    if (role_changed && ShouldExportToConnStats()) {
-      ExportInitialConnStats();
-    }
+    SetRole(role, "Inferred from http2 header");
   }
 
   protocols::http2::HalfStream* half_stream_ptr = HalfStreamPtr(hdr->attr.stream_id, write_event);
@@ -400,8 +381,8 @@ void ConnTracker::Disable(std::string_view reason) {
 
 bool ConnTracker::AllEventsReceived() const {
   return close_info_.timestamp_ns != 0 &&
-         stats_.Get(Stats::Key::kBytesSent) == close_info_.send_bytes &&
-         stats_.Get(Stats::Key::kBytesRecv) == close_info_.recv_bytes;
+         stats_.Get(StatKey::kBytesSent) == static_cast<int64_t>(close_info_.send_bytes) &&
+         stats_.Get(StatKey::kBytesRecv) == static_cast<int64_t>(close_info_.recv_bytes);
 }
 
 namespace {
@@ -443,7 +424,7 @@ void ConnTracker::SetConnID(struct conn_id_t conn_id) {
 void ConnTracker::SetRemoteAddr(const union sockaddr_t addr, std::string_view reason) {
   if (open_info_.remote_addr.family == SockAddrFamily::kUnspecified) {
     PopulateSockAddr(&addr.sa, &open_info_.remote_addr);
-    if (addr.sa.sa_family == AF_UNKNOWN) {
+    if (addr.sa.sa_family == PX_AF_UNKNOWN) {
       open_info_.remote_addr.family = SockAddrFamily::kUnspecified;
     }
     CONN_TRACE(1) << absl::Substitute("RemoteAddr updated $0, reason=[$1]",
@@ -509,6 +490,8 @@ void ConnTracker::UpdateTimestamps(uint64_t bpf_timestamp) {
 }
 
 void ConnTracker::CheckTracker() {
+  DCHECK_NE(conn_id().fd, -1);
+
   if (death_countdown_ >= 0 && death_countdown_ < kDeathCountdownIters - 1) {
     CONN_TRACE(1) << absl::Substitute(
         "Did not expect new event more than 1 sampling iteration after Close. Connection=$0.",
@@ -547,11 +530,6 @@ void ConnTracker::MarkForDeath(int32_t countdown) {
     CONN_TRACE(2) << absl::Substitute("Marked for death, countdown=$0", countdown);
   }
 
-  // Only send the first time MarkForDeath is called (death_countdown == -1).
-  if (death_countdown_ == -1 && ShouldExportToConnStats()) {
-    conn_stats_->AddConnCloseEvent(*this);
-  }
-
   // We received the close event.
   // Now give up to some more TransferData calls to receive trailing data events.
   // We do this for logging/debug purposes only.
@@ -567,7 +545,8 @@ bool ConnTracker::IsZombie() const { return death_countdown_ >= 0; }
 bool ConnTracker::ReadyForDestruction() const {
   // We delay destruction time by a few iterations.
   // See also MarkForDeath().
-  return death_countdown_ == 0;
+  // Also wait to make sure the final ConnStats event is reported before destroying.
+  return (death_countdown_ == 0) && final_conn_stats_reported_;
 }
 
 bool ConnTracker::IsRemoteAddrInCluster(const std::vector<CIDRBlock>& cluster_cidrs) {
@@ -662,37 +641,16 @@ void ConnTracker::UpdateState(const std::vector<CIDRBlock>& cluster_cidrs) {
 void ConnTracker::UpdateDataStats(const SocketDataEvent& event) {
   switch (event.attr.direction) {
     case TrafficDirection::kEgress: {
-      stats_.Increment(Stats::Key::kDataEventSent, 1);
-      stats_.Increment(Stats::Key::kBytesSent, event.attr.msg_size);
-      stats_.Increment(Stats::Key::kBytesSentTransferred, event.attr.msg_buf_size);
+      stats_.Increment(StatKey::kDataEventSent, 1);
+      stats_.Increment(StatKey::kBytesSent, event.attr.msg_size);
+      stats_.Increment(StatKey::kBytesSentTransferred, event.attr.msg_buf_size);
     } break;
     case TrafficDirection::kIngress: {
-      stats_.Increment(Stats::Key::kDataEventRecv, 1);
-      stats_.Increment(Stats::Key::kBytesRecv, event.attr.msg_size);
-      stats_.Increment(Stats::Key::kBytesRecvTransferred, event.attr.msg_buf_size);
+      stats_.Increment(StatKey::kDataEventRecv, 1);
+      stats_.Increment(StatKey::kBytesRecv, event.attr.msg_size);
+      stats_.Increment(StatKey::kBytesRecvTransferred, event.attr.msg_buf_size);
     } break;
   }
-}
-
-bool ConnTracker::ShouldExportToConnStats() const {
-  if (conn_stats_ == nullptr) {
-    return false;
-  }
-
-  bool endpoint_resolved = remote_endpoint().family == SockAddrFamily::kIPv4 ||
-                           remote_endpoint().family == SockAddrFamily::kIPv6;
-  bool role_resolved = (role_ != kRoleUnknown);
-
-  return endpoint_resolved && role_resolved;
-}
-
-void ConnTracker::ExportInitialConnStats() {
-  conn_stats_->AddConnOpenEvent(*this);
-
-  conn_stats_->RecordData(conn_id_.upid, protocol_, role_, kEgress, remote_endpoint(),
-                          stats_.Get(Stats::Key::kBytesSent));
-  conn_stats_->RecordData(conn_id_.upid, protocol_, role_, kIngress, remote_endpoint(),
-                          stats_.Get(Stats::Key::kBytesRecv));
 }
 
 void ConnTracker::IterationPreTick(
@@ -718,11 +676,6 @@ void ConnTracker::IterationPreTick(
     // TODO(oazizi): If connection resolves to SockAddr type "Other",
     //               we should mark the state in BPF to Other too, so BPF stops tracing.
     //               We should also mark the ConnTracker for death.
-
-    // If the address was successfully resolved, then send the connect information to conn stats.
-    if (ShouldExportToConnStats()) {
-      ExportInitialConnStats();
-    }
   }
 
   UpdateState(cluster_cidrs);
@@ -810,8 +763,7 @@ void ConnTracker::HandleInactivity() {
 }
 
 double ConnTracker::StitchFailureRate() const {
-  int total_attempts =
-      stats_.Get(Stats::Key::kInvalidRecords) + stats_.Get(Stats::Key::kValidRecords);
+  int total_attempts = stats_.Get(StatKey::kInvalidRecords) + stats_.Get(StatKey::kValidRecords);
 
   // Don't report rates until there some meaningful amount of events.
   // - Avoids division by zero.
@@ -820,7 +772,7 @@ double ConnTracker::StitchFailureRate() const {
     return 0.0;
   }
 
-  return 1.0 * stats_.Get(Stats::Key::kInvalidRecords) / total_attempts;
+  return 1.0 * stats_.Get(StatKey::kInvalidRecords) / total_attempts;
 }
 
 namespace {

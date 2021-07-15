@@ -28,6 +28,7 @@
 #include "src/shared/metadata/metadata_state.h"
 #include "src/shared/types/column_wrapper.h"
 #include "src/shared/types/type_utils.h"
+#include "src/stirling/core/output.h"
 #include "src/stirling/proto/stirling.pb.h"
 
 namespace px {
@@ -95,45 +96,27 @@ class DataTableSchema {
  public:
   // TODO(oazizi): This constructor should only be called at compile-time. Need to enforce this.
   template <std::size_t N>
-  constexpr DataTableSchema(
-      std::string_view name, std::string_view desc, const DataElement (&elements)[N],
-      std::chrono::milliseconds default_sampling_period = kDefaultSamplingPeriod,
-      std::chrono::milliseconds default_push_period = kDefaultPushPeriod)
-      : name_(name),
-        desc_(desc),
-        elements_(elements),
-        tabletized_(false),
-        default_sampling_period_(default_sampling_period),
-        default_push_period_(default_push_period) {
+  constexpr DataTableSchema(std::string_view name, std::string_view desc,
+                            const DataElement (&elements)[N])
+      : name_(name), desc_(desc), elements_(elements), tabletized_(false) {
     CheckSchema();
   }
 
   template <std::size_t N>
-  constexpr DataTableSchema(
-      std::string_view name, std::string_view desc, const DataElement (&elements)[N],
-      std::string_view tabletization_key_name,
-      std::chrono::milliseconds default_sampling_period = kDefaultSamplingPeriod,
-      std::chrono::milliseconds default_push_period = kDefaultPushPeriod)
+  constexpr DataTableSchema(std::string_view name, std::string_view desc,
+                            const DataElement (&elements)[N],
+                            std::string_view tabletization_key_name)
       : name_(name),
         desc_(desc),
         elements_(elements),
         tabletized_(true),
-        tabletization_key_(ColIndex(tabletization_key_name)),
-        default_sampling_period_(default_sampling_period),
-        default_push_period_(default_push_period) {
+        tabletization_key_(ColIndex(tabletization_key_name)) {
     CheckSchema();
   }
 
   DataTableSchema(std::string_view name, std::string_view desc,
-                  const std::vector<DataElement>& elements,
-                  std::chrono::milliseconds default_sampling_period = kDefaultSamplingPeriod,
-                  std::chrono::milliseconds default_push_period = kDefaultPushPeriod)
-      : name_(name),
-        desc_(desc),
-        elements_(elements.data(), elements.size()),
-        tabletized_(false),
-        default_sampling_period_(default_sampling_period),
-        default_push_period_(default_push_period) {
+                  const std::vector<DataElement>& elements)
+      : name_(name), desc_(desc), elements_(elements.data(), elements.size()), tabletized_(false) {
     CheckSchema();
   }
 
@@ -142,10 +125,6 @@ class DataTableSchema {
   constexpr bool tabletized() const { return tabletized_; }
   constexpr size_t tabletization_key() const { return tabletization_key_; }
   constexpr ArrayView<DataElement> elements() const { return elements_; }
-  constexpr std::chrono::milliseconds default_sampling_period() const {
-    return default_sampling_period_;
-  }
-  constexpr std::chrono::milliseconds default_push_period() const { return default_push_period_; }
 
   // Warning: use at compile-time only!
   // TODO(oazizi): Convert to consteval when C++20 is supported, to ensure compile-time use only.
@@ -195,10 +174,7 @@ class DataTableSchema {
   const ArrayView<DataElement> elements_;
   const bool tabletized_ = false;
   size_t tabletization_key_ = std::numeric_limits<size_t>::max();
-  std::chrono::milliseconds default_sampling_period_;
-  std::chrono::milliseconds default_push_period_;
 
-  static constexpr std::chrono::milliseconds kDefaultSamplingPeriod{100};
   static constexpr std::chrono::milliseconds kDefaultPushPeriod{1000};
 };
 
@@ -267,6 +243,15 @@ class DynamicDataTableSchema {
   // output_struct_.
   DataTableSchema table_schema_;
 };
+
+std::string PrintRecords(const DataTableSchema& data_table_schema,
+                         const types::ColumnWrapperRecordBatch& record_batch);
+
+#define DEFINE_PRINT_TABLE(protocol_name)                       \
+  inline std::string Print##protocol_name##Table(               \
+      const types::ColumnWrapperRecordBatch& record_batch) {    \
+    return PrintRecords(k##protocol_name##Table, record_batch); \
+  }
 
 }  // namespace stirling
 }  // namespace px

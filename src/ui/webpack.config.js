@@ -20,7 +20,6 @@ const { resolve, join } = require('path');
 const { execSync } = require('child_process');
 
 const webpack = require('webpack');
-const { CheckerPlugin } = require('awesome-typescript-loader');
 const CaseSensitivePathsPlugin = require('case-sensitive-paths-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const fs = require('fs');
@@ -37,7 +36,6 @@ if (isDevServer) {
 }
 
 const plugins = [
-  new CheckerPlugin(),
   new CaseSensitivePathsPlugin(),
   new FaviconsWebpackPlugin('../assets/favicon-base.png'),
   new HtmlWebpackPlugin({
@@ -66,7 +64,7 @@ const plugins = [
 if (isDevServer) {
   plugins.push(new webpack.SourceMapDevToolPlugin({
     filename: 'sourcemaps/[file].map',
-    exclude: [/node_modules/, /vendor/, /vendor\.chunk\.js/, /vendor\.js/],
+    exclude: [/vendor/, /vendor\.chunk\.js/, /vendor\.js/],
   }));
 } else {
   plugins.push(
@@ -95,27 +93,25 @@ const webpackConfig = {
     hot: true,
     writeToDisk: true,
     publicPath: '/static',
-    historyApiFallback: true,
+    historyApiFallback: {
+      disableDotRule: true,
+    },
     proxy: [],
   },
   entry: {
-    main: 'app.tsx',
-    config: ['flags.js', 'segment.js'],
+    main: './app.tsx',
+    config: ['./flags.js', './segment.js'],
   },
   module: {
     rules: [
-      {
-        test: /\.js[x]?$/,
-        loader: require.resolve('babel-loader'),
+      ...['js', 'jsx', 'ts', 'tsx'].map((ext) => ({
+        test: new RegExp(`\\.${ext}$`),
+        loader: require.resolve('esbuild-loader'),
         options: {
-          cacheDirectory: true,
-          ignore: ['segment.js'],
+          loader: ext,
+          target: 'es6',
         },
-      },
-      {
-        test: /\.ts[x]?$/,
-        loader: require.resolve('awesome-typescript-loader'),
-      },
+      })),
       {
         test: /\.(jpg|png|gif|svg)$/,
         loader: 'image-webpack-loader',
@@ -180,12 +176,21 @@ const webpackConfig = {
       '.webpack.js',
       '.png',
     ],
-    modules: ['node_modules', resolve('./src'), resolve('./assets')],
     alias: {
       configurable: [
         resolve(__dirname, 'src/configurables/private/'),
         resolve(__dirname, 'src/configurables/base/'),
       ],
+      'app/*': [
+        resolve(__dirname, 'src/'),
+      ],
+      'assets/*': [
+        resolve(__dirname, 'assets/'),
+      ]
+    },
+    fallback: {
+      // client-oauth2 references `querystring` (nodeJS builtin). We use `query-string` to polyfill it in browsers.
+      querystring: require.resolve('query-string'),
     },
   },
   optimization: {
@@ -201,6 +206,8 @@ const webpackConfig = {
           minSize: 0, // This is example is too small to create commons chunks
         },
         vendor: {
+          // Yarn PnP still puts this in the string (`.../.yarn/$$virtual/.../depName/.../node_modules/...)
+          // so we can still split the vendor bundle based on that.
           test: /[\\/]node_modules[\\/]/,
           chunks: 'initial',
           name: 'vendor',
@@ -244,10 +251,14 @@ module.exports = (env, argv) => {
   // Users can specify the OAUTH environment. Usually this just means
   // setting to "ory_auth", otherwise will default to `environment`.
   const oauthConfigEnv = process.env.PL_OAUTH_CONFIG_ENV;
-  let oauthYAML = utils.readYAMLFile(join(topLevelDir, 'credentials', 'k8s', credentialsEnv, 'configs', 'oauth_config.yaml'), true);
+  let oauthYAML = utils.readYAMLFile(
+    join(topLevelDir, 'credentials', 'k8s', credentialsEnv, 'configs', 'oauth_config.yaml'), true)
+  ;
   // Special case for ory_auth where we read from the unecrypted file.
   if (oauthConfigEnv === 'ory_auth') {
-    oauthYAML = utils.readYAMLFile( join(topLevelDir, 'k8s', 'cloud', oauthConfigEnv, 'oauth_config.yaml'), false);
+    oauthYAML = utils.readYAMLFile(
+      join(topLevelDir, 'k8s', 'cloud', 'base', oauthConfigEnv, 'oauth_config.yaml'), false
+    );
   }
 
   // Setup the auth client.
@@ -286,7 +297,7 @@ module.exports = (env, argv) => {
       __CONFIG_AUTH_CLIENT_ID__: JSON.stringify(authClientID),
       __CONFIG_DOMAIN_NAME__: JSON.stringify(domainYAML.data.PL_DOMAIN_NAME),
       __CONFIG_LD_CLIENT_ID__: JSON.stringify(ldYAML.data.PL_LD_CLIENT_ID),
-      __SEGMENT_ANALYTICS_JS_DOMAIN__: `segment.${domainYAML.data.PL_DOMAIN_NAME}`,
+      __SEGMENT_ANALYTICS_JS_DOMAIN__: `"segment.${domainYAML.data.PL_DOMAIN_NAME}"`,
     }),
   );
 

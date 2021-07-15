@@ -44,18 +44,14 @@ static constexpr DataElement kElements[] = {
      types::DataType::INT64, types::SemanticType::ST_NONE, types::PatternType::METRIC_GAUGE}
 };
 
-constexpr std::chrono::milliseconds kStackTraceTableSamplingPeriod(2500);
-constexpr std::chrono::milliseconds kStackTraceTablePushPeriod(5000);
-
 constexpr auto kStackTraceTable = DataTableSchema(
         "stack_traces.beta",
         "Sampled stack traces of applications that identify hot-spots in application code. "
         "Executable symbols are required for human-readable function names to be displayed.",
-        kElements,
-        kStackTraceTableSamplingPeriod,
-        kStackTraceTablePushPeriod
+        kElements
 );
 // clang-format on
+DEFINE_PRINT_TABLE(StackTrace)
 
 constexpr int kStackTraceTimeIdx = kStackTraceTable.ColIndex("time_");
 constexpr int kStackTraceUPIDIdx = kStackTraceTable.ColIndex("upid");

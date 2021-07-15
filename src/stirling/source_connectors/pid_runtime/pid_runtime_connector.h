@@ -52,9 +52,8 @@ class PIDRuntimeConnector : public SourceConnector, public bpf_tools::BCCWrapper
   };
   // clang-format on
 
-  static constexpr auto kTable =
-      DataTableSchema("bcc_pid_cpu_usage", "CPU usage metrics for processes (obtained via BPF)",
-                      kElements, std::chrono::milliseconds{100}, std::chrono::milliseconds{1000});
+  static constexpr auto kTable = DataTableSchema(
+      "bcc_pid_cpu_usage", "CPU usage metrics for processes (obtained via BPF)", kElements);
 
   static constexpr auto kTables = MakeArray(kTable);
 
@@ -64,10 +63,6 @@ class PIDRuntimeConnector : public SourceConnector, public bpf_tools::BCCWrapper
 
   Status InitImpl() override;
   Status StopImpl() override;
-  void TransferDataImpl(ConnectorContext* ctx, uint32_t table_num, DataTable* data_table) override;
-  bool output_multi_tables() const override {
-    return FLAGS_stirling_source_connector_output_multiple_data_tables;
-  }
   void TransferDataImpl(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables) override;
 
  protected:

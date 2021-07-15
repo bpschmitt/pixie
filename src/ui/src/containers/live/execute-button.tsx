@@ -16,18 +16,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import ClientContext from 'common/vizier-grpc-client-context';
-import { PlayIcon, StopIcon } from '@pixie-labs/components';
+import { PlayIcon, StopIcon } from 'app/components';
 import * as React from 'react';
 
 import Tooltip from '@material-ui/core/Tooltip';
 
-import { ResultsContext } from 'context/results-context';
-import { ScriptContext } from 'context/script-context';
+import { ResultsContext } from 'app/context/results-context';
+import { EditorContext } from 'app/context/editor-context';
+import { ScriptContext } from 'app/context/script-context';
 import {
   Button, Theme, withStyles, WithStyles,
 } from '@material-ui/core';
 import { createStyles } from '@material-ui/styles';
+import { ClusterContext } from 'app/common/cluster-context';
+import { PixieAPIClient, PixieAPIContext } from 'app/api';
+import { GQLClusterStatus } from 'app/types/schema';
 
 const styles = ({ breakpoints, typography }: Theme) => createStyles({
   buttonText: {
@@ -44,7 +47,7 @@ const styles = ({ breakpoints, typography }: Theme) => createStyles({
 const StyledButton = withStyles((theme: Theme) => createStyles({
   root: {
     height: '100%',
-    borderRadius: `0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0px`,
+    borderRadius: theme.shape.borderRadius,
   },
 }))(Button);
 
@@ -53,12 +56,16 @@ type ExecuteScriptButtonProps = WithStyles<typeof styles>;
 const CANCELLABILITY_DELAY_MS = 1000;
 
 const ExecuteScriptButtonBare = ({ classes }: ExecuteScriptButtonProps) => {
-  const { healthy } = React.useContext(ClientContext);
+  const cloudClient = (React.useContext(PixieAPIContext) as PixieAPIClient).getCloudClient();
+  const { selectedClusterStatus } = React.useContext(ClusterContext);
   const { loading, streaming } = React.useContext(ResultsContext);
-  const { saveEditorAndExecute, cancelExecution } = React.useContext(ScriptContext);
+  const { saveEditor } = React.useContext(EditorContext);
+  const { cancelExecution } = React.useContext(ScriptContext);
 
   const [cancellable, setCancellable] = React.useState<boolean>(false);
   const [cancellabilityTimer, setCancellabilityTimer] = React.useState<number>(undefined);
+
+  const healthy = cloudClient && selectedClusterStatus === GQLClusterStatus.CS_HEALTHY;
 
   React.useEffect(() => {
     window.clearTimeout(cancellabilityTimer);
@@ -90,7 +97,7 @@ const ExecuteScriptButtonBare = ({ classes }: ExecuteScriptButtonProps) => {
           variant={cancellable ? 'outlined' : 'contained'}
           color='primary'
           disabled={!healthy || ((loading || streaming) && !cancellable)}
-          onClick={cancellable ? cancelExecution : saveEditorAndExecute}
+          onClick={cancellable ? cancelExecution : saveEditor}
           size='small'
           startIcon={cancellable ? <StopIcon /> : <PlayIcon />}
         >

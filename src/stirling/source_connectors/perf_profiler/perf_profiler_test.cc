@@ -31,8 +31,11 @@
 namespace px {
 namespace stirling {
 
+using ::px::stirling::testing::FindRecordIdxMatchesPIDs;
 using ::px::testing::BazelBinTestFilePath;
-using testing::FindRecordIdxMatchesPIDs;
+using ::testing::Gt;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 
 class CPUPinnedBinaryRunner {
  public:
@@ -53,7 +56,7 @@ class CPUPinnedBinaryRunner {
 
 class PerfProfileBPFTest : public ::testing::Test {
  public:
-  PerfProfileBPFTest() : data_table_(kStackTraceTable) {}
+  PerfProfileBPFTest() : data_table_(/*id*/ 0, kStackTraceTable) {}
 
  protected:
   void SetUp() override {
@@ -102,41 +105,6 @@ class PerfProfileBPFTest : public ::testing::Test {
     return sub_processes;
   }
 
-  void CheckThatAllColumnsHaveSameNumRows(const types::ColumnWrapperRecordBatch& columns) {
-    const size_t num_rows = columns[kStackTraceTimeIdx]->Size();
-    ASSERT_THAT(columns, ::testing::Each(testing::ColWrapperSizeIs(num_rows)));
-  }
-
-  void CheckStackTraceIDsInvariance() {
-    // Just check that the test author populated the necessary.
-    ASSERT_TRUE(column_ptrs_populated_);
-    const size_t num_rows = stack_traces_column_->Size();
-
-    // A map to track stack-trace-id to symbolic-stack-trace invariance:
-    absl::flat_hash_map<int64_t, std::string_view> id_to_symbolic_repr_map;
-    uint64_t num_stack_trace_ids_checked = 0;
-
-    for (size_t row_idx = 0; row_idx < num_rows; ++row_idx) {
-      const int64_t stack_trace_id = trace_ids_column_->Get<types::Int64Value>(row_idx).val;
-      const std::string_view stack_trace = stack_traces_column_->Get<types::StringValue>(row_idx);
-
-      if (id_to_symbolic_repr_map.contains(stack_trace_id)) {
-        // If we've seen a certain stack-trace-id before,
-        // check that it's symoblic representation is the same as before.
-        EXPECT_EQ(id_to_symbolic_repr_map[stack_trace_id], stack_trace);
-        ++num_stack_trace_ids_checked;
-      } else {
-        // First time we've seen this stack-trace-id: just record it.
-        id_to_symbolic_repr_map[stack_trace_id] = stack_trace;
-      }
-    }
-
-    // Surely we did some checking of stack-trace-id:symbolic-stack-trace invariance;
-    // check that we did.
-    LOG(INFO) << "num_stack_trace_ids_checked: " << num_stack_trace_ids_checked;
-    EXPECT_GT(num_stack_trace_ids_checked, 0);
-  }
-
   void PopulateObservedStackTraces(const std::vector<size_t>& target_row_idxs) {
     // Just check that the test author populated the necessary,
     // and did not corrupt the cumulative sum already.
@@ -173,28 +141,16 @@ class PerfProfileBPFTest : public ::testing::Test {
     }
   }
 
-  void CheckExpectedVsObservedStackTraces() {
-    for (const auto& expected_stack_trace : expected_stack_traces_) {
-      // Check that we observed all the stack traces that we expected:
-      const bool stack_trace_found = observed_stack_traces_.contains(expected_stack_trace);
-      EXPECT_TRUE(stack_trace_found);
-      if (stack_trace_found) {
-        const uint64_t count = observed_stack_traces_[expected_stack_trace];
-        EXPECT_GT(count, 0) << expected_stack_trace;
-        LOG(INFO) << expected_stack_trace << ": " << count;
-      }
-    }
-  }
-
   void CheckExpectedStackTraceCounts(const ssize_t num_subprocesses,
-                                     const std::chrono::duration<double> elapsed_time) {
-    const uint64_t kBPFSmaplingPeriodMillis = PerfProfileConnector::BPFSamplingPeriodMillis();
-    const double expected_rate = 1000.0 / static_cast<double>(kBPFSmaplingPeriodMillis);
+                                     const std::chrono::duration<double> elapsed_time,
+                                     const std::string& key1x, const std::string& key2x) {
+    const uint64_t kBPFSamplingPeriodMillis = PerfProfileConnector::kBPFSamplingPeriod.count();
+    const double expected_rate = 1000.0 / static_cast<double>(kBPFSamplingPeriodMillis);
     const double expected_num_samples = num_subprocesses * elapsed_time.count() * expected_rate;
     const uint64_t expected_num_sample_lower = uint64_t(0.9 * expected_num_samples);
     const uint64_t expected_num_sample_upper = uint64_t(1.1 * expected_num_samples);
-    const double obsevedNumSamples = static_cast<double>(cumulative_sum_);
-    const double observed_rate = obsevedNumSamples / elapsed_time.count() / num_subprocesses;
+    const double observedNumSamples = static_cast<double>(cumulative_sum_);
+    const double observed_rate = observedNumSamples / elapsed_time.count() / num_subprocesses;
 
     LOG(INFO) << absl::StrFormat("expected num samples: %d", uint64_t(expected_num_samples));
     LOG(INFO) << absl::StrFormat("total samples: %d", cumulative_sum_);
@@ -211,13 +167,12 @@ class PerfProfileBPFTest : public ::testing::Test {
     EXPECT_GT(cumulative_sum_, expected_num_sample_lower) << err_msg;
     EXPECT_LT(cumulative_sum_, expected_num_sample_upper) << err_msg;
 
-    const double num_2x_samples = observed_stack_traces_[key2x_];
-    const double num_1x_samples = observed_stack_traces_[key1x_];
+    const double num_1x_samples = observed_stack_traces_[key1x];
+    const double num_2x_samples = observed_stack_traces_[key2x];
     const double ratio = num_2x_samples / num_1x_samples;
 
     // We expect the ratio of fib52:fib27 to be approx. 2:1;
     // or sqrt, or something else that was in the toy test app.
-    LOG(INFO) << "ratio of 2x samples to 1x samples: " << ratio;
     // TODO(jps): Increase sampling frequency and then tighten this margin.
     constexpr double kMargin = 0.5;
     EXPECT_GT(ratio, 2.0 - kMargin);
@@ -244,7 +199,6 @@ class PerfProfileBPFTest : public ::testing::Test {
 
     columns_ = tablets[0].records;
 
-    CheckThatAllColumnsHaveSameNumRows(columns_);
     PopulateColumnPtrs(columns_);
   }
 
@@ -256,17 +210,17 @@ class PerfProfileBPFTest : public ::testing::Test {
   }
 
   std::chrono::duration<double> RunTest(const std::chrono::seconds test_run_time) {
-    constexpr std::chrono::milliseconds t_sleep = kStackTraceTableSamplingPeriod;
+    constexpr std::chrono::milliseconds t_sleep = PerfProfileConnector::kSamplingPeriod;
     const auto start_time = std::chrono::steady_clock::now();
     const auto stop_time = start_time + test_run_time;
 
     // Continuously poke Stirling TransferData() using the underlying schema periodicity;
     // break from this loop when the elapsed time exceeds the targeted run time.
     while (std::chrono::steady_clock::now() < stop_time) {
-      source_->TransferData(ctx_.get(), PerfProfileConnector::kPerfProfileTableNum, &data_table_);
+      source_->TransferData(ctx_.get(), data_tables_);
       std::this_thread::sleep_for(t_sleep);
     }
-    source_->TransferData(ctx_.get(), PerfProfileConnector::kPerfProfileTableNum, &data_table_);
+    source_->TransferData(ctx_.get(), data_tables_);
 
     // We return the amount of time that we ran the test; it will be used to compute
     // the observed sample rate and the expected number of samples.
@@ -276,6 +230,7 @@ class PerfProfileBPFTest : public ::testing::Test {
   std::unique_ptr<SourceConnector> source_;
   std::unique_ptr<StandaloneContext> ctx_;
   DataTable data_table_;
+  const std::vector<DataTable*> data_tables_{&data_table_};
 
   bool column_ptrs_populated_ = false;
   std::shared_ptr<types::ColumnWrapper> trace_ids_column_;
@@ -284,12 +239,8 @@ class PerfProfileBPFTest : public ::testing::Test {
 
   uint64_t cumulative_sum_ = 0;
   absl::flat_hash_map<std::string, uint64_t> observed_stack_traces_;
-  absl::flat_hash_set<std::string_view> expected_stack_traces_;
 
   types::ColumnWrapperRecordBatch columns_;
-
-  std::string key2x_;
-  std::string key1x_;
 
   // To reduce variance in results, we add more run-time or add sub-processes:
   static constexpr uint64_t kNumSubProcesses = 4;
@@ -305,12 +256,8 @@ TEST_F(PerfProfileBPFTest, PerfProfilerGoTest) {
 
   // The toy test app. should be written such that we can expect one stack trace
   // twice as often as another.
-  key2x_ = "runtime.goexit;runtime.main;main.main;main.sqrtOf1e39;main.sqrt";
-  key1x_ = "runtime.goexit;runtime.main;main.main;main.sqrtOf1e18;main.sqrt";
-
-  // Populate expected_stack_traces_ with the keys for this test:
-  expected_stack_traces_.insert(key2x_);
-  expected_stack_traces_.insert(key1x_);
+  std::string key2x = "runtime.goexit;runtime.main;main.main;main.sqrtOf1e39;main.sqrt";
+  std::string key1x = "runtime.goexit;runtime.main;main.main;main.sqrtOf1e18;main.sqrt";
 
   // Start they toy apps as sub-processes, then,
   // for a certain amount of time (kTestRunTime), collect data using RunTest().
@@ -329,11 +276,12 @@ TEST_F(PerfProfileBPFTest, PerfProfilerGoTest) {
 
   // Populate the cumulative sum & the observed stack traces histo,
   // then check observed vs. expected stack traces key set:
-  ASSERT_NO_FATAL_FAILURE(CheckStackTraceIDsInvariance());
   ASSERT_NO_FATAL_FAILURE(PopulateCumulativeSum(target_row_idxs));
   ASSERT_NO_FATAL_FAILURE(PopulateObservedStackTraces(target_row_idxs));
-  ASSERT_NO_FATAL_FAILURE(CheckExpectedVsObservedStackTraces());
-  ASSERT_NO_FATAL_FAILURE(CheckExpectedStackTraceCounts(kNumSubProcesses, elapsed_time));
+  EXPECT_THAT(observed_stack_traces_, ::testing::Contains(Pair(key1x, Gt(0))));
+  EXPECT_THAT(observed_stack_traces_, ::testing::Contains(Pair(key2x, Gt(0))));
+  ASSERT_NO_FATAL_FAILURE(
+      CheckExpectedStackTraceCounts(kNumSubProcesses, elapsed_time, key1x, key2x));
 }
 
 TEST_F(PerfProfileBPFTest, PerfProfilerCppTest) {
@@ -346,12 +294,8 @@ TEST_F(PerfProfileBPFTest, PerfProfilerCppTest) {
 
   // The toy test app. should be written such that we can expect one stack trace
   // twice as often as another.
-  key2x_ = "__libc_start_main;main;fib52();fib(unsigned long)";
-  key1x_ = "__libc_start_main;main;fib27();fib(unsigned long)";
-
-  // Populate expected_stack_traces_ with the keys for this test:
-  expected_stack_traces_.insert(key2x_);
-  expected_stack_traces_.insert(key1x_);
+  std::string key2x = "__libc_start_main;main;fib52();fib(unsigned long)";
+  std::string key1x = "__libc_start_main;main;fib27();fib(unsigned long)";
 
   // Start they toy apps as sub-processes, then,
   // for a certain amount of time, collect data using RunTest().
@@ -370,11 +314,12 @@ TEST_F(PerfProfileBPFTest, PerfProfilerCppTest) {
 
   // Populate the cumulative sum & the observed stack traces histo,
   // then check observed vs. expected stack traces key set:
-  ASSERT_NO_FATAL_FAILURE(CheckStackTraceIDsInvariance());
   ASSERT_NO_FATAL_FAILURE(PopulateCumulativeSum(target_row_idxs));
   ASSERT_NO_FATAL_FAILURE(PopulateObservedStackTraces(target_row_idxs));
-  ASSERT_NO_FATAL_FAILURE(CheckExpectedVsObservedStackTraces());
-  ASSERT_NO_FATAL_FAILURE(CheckExpectedStackTraceCounts(kNumSubProcesses, elapsed_time));
+  EXPECT_THAT(observed_stack_traces_, ::testing::Contains(Pair(key1x, Gt(0))));
+  EXPECT_THAT(observed_stack_traces_, ::testing::Contains(Pair(key2x, Gt(0))));
+  ASSERT_NO_FATAL_FAILURE(
+      CheckExpectedStackTraceCounts(kNumSubProcesses, elapsed_time, key1x, key2x));
 }
 
 TEST_F(PerfProfileBPFTest, TestOutOfContext) {
@@ -390,10 +335,6 @@ TEST_F(PerfProfileBPFTest, TestOutOfContext) {
   // will consider the sub-processes as "out-of-context" and not symbolize them.
   ctx_ = std::make_unique<StandaloneContext>();
 
-  // Populate expected_stack_traces_ with the keys for this test,
-  // in this case, just "<not symbolized>" (see note above about the "context"):
-  expected_stack_traces_.insert(profiler::kNotSymbolizedMessage);
-
   // Start they toy apps as sub-processes, then,
   // for a certain amount of time, collect data using RunTest().
   auto sub_processes = StartSubProcesses<CPUPinnedBinaryRunner>(bazel_app_path, kTestIdx);
@@ -406,7 +347,6 @@ TEST_F(PerfProfileBPFTest, TestOutOfContext) {
 
   // Populate the cumulative sum & the observed stack traces histo,
   // then check observed vs. expected stack traces key set:
-  ASSERT_NO_FATAL_FAILURE(CheckStackTraceIDsInvariance());
   ASSERT_NO_FATAL_FAILURE(PopulateCumulativeSum(target_row_idxs));
   ASSERT_NO_FATAL_FAILURE(PopulateObservedStackTraces(target_row_idxs));
 }

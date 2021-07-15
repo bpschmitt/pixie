@@ -31,7 +31,7 @@ ACCESS_TOKEN = "12345678-0000-0000-0000-987654321012"
 pxl_script = """
 import px
 px.display(px.DataFrame('http_events')[
-           ['http_resp_body','http_resp_status']].head(10), 'http')
+           ['resp_body','resp_status']].head(10), 'http')
 px.display(px.DataFrame('process_stats')[
            ['upid','cpu_ktime_ns', 'rss_bytes']].head(10), 'stats')
 """
@@ -189,8 +189,8 @@ class TestClient(unittest.TestCase):
         )
 
         self.http_table_factory = test_utils.FakeTableFactory("http", vpb.Relation(columns=[
-            test_utils.string_col("http_resp_body"),
-            test_utils.int64_col("http_resp_status"),
+            test_utils.string_col("resp_body"),
+            test_utils.int64_col("resp_status"),
         ]))
 
         self.stats_table_factory = test_utils.FakeTableFactory("stats", vpb.Relation(columns=[
@@ -264,8 +264,8 @@ class TestClient(unittest.TestCase):
         async def process_table(table_sub: pxapi.TableSub) -> None:
             num_rows = 0
             async for row in table_sub:
-                self.assertEqual(row["http_resp_body"], "foo")
-                self.assertEqual(row["http_resp_status"], 200)
+                self.assertEqual(row["resp_body"], "foo")
+                self.assertEqual(row["resp_status"], 200)
                 num_rows += 1
 
             self.assertEqual(num_rows, 1)
@@ -310,8 +310,8 @@ class TestClient(unittest.TestCase):
             # table_sub hides the batched rows and delivers them in
             # the same order as the batches sent.
             async for row in table_sub:
-                self.assertEqual(row["http_resp_body"], rb_data[0][row_i])
-                self.assertEqual(row["http_resp_status"], rb_data[1][row_i])
+                self.assertEqual(row["resp_body"], rb_data[0][row_i])
+                self.assertEqual(row["resp_status"], rb_data[1][row_i])
                 row_i += 1
 
             self.assertEqual(row_i, 4)
@@ -358,8 +358,8 @@ class TestClient(unittest.TestCase):
         async def process_http_tb(table_sub: pxapi.TableSub) -> None:
             num_rows = 0
             async for row in table_sub:
-                self.assertEqual(row["http_resp_body"], "foo")
-                self.assertEqual(row["http_resp_status"], 200)
+                self.assertEqual(row["resp_body"], "foo")
+                self.assertEqual(row["resp_status"], 200)
                 num_rows += 1
 
             self.assertEqual(num_rows, 1)
@@ -495,8 +495,8 @@ class TestClient(unittest.TestCase):
         def http_fn(row: pxapi.Row) -> None:
             nonlocal http_counter
             http_counter += 1
-            self.assertEqual(row["http_resp_body"], "foo")
-            self.assertEqual(row["http_resp_status"], 200)
+            self.assertEqual(row["resp_body"], "foo")
+            self.assertEqual(row["resp_status"], 200)
         script_executor.add_callback("http", http_fn)
 
         # Define a callback function for the stats_fn.
@@ -573,8 +573,8 @@ class TestClient(unittest.TestCase):
         async def process_http_tb(table_sub: pxapi.TableSub) -> None:
             num_rows = 0
             async for row in table_sub:
-                self.assertEqual(row["http_resp_body"], "foo")
-                self.assertEqual(row["http_resp_status"], 200)
+                self.assertEqual(row["resp_body"], "foo")
+                self.assertEqual(row["resp_status"], 200)
                 num_rows += 1
 
             self.assertEqual(num_rows, 1)
@@ -752,7 +752,6 @@ class TestClient(unittest.TestCase):
             loop.run_until_complete(
                 run_script_and_tasks(script_executor, [test_utils.iterate_and_pass(http_tb)]))
 
-    @unittest.skip("PP-2660 - Test fails in docker environment")
     def test_direct_conns(self) -> None:
         # Test the direct connections.
 
@@ -776,7 +775,7 @@ class TestClient(unittest.TestCase):
         port = dc_server.add_insecure_port("[::]:0")
         dc_server.start()
 
-        url = f"http://[::]:{port}"
+        url = f"http://localhost:{port}"
         token = cluster_id
         self.fake_cloud_service.add_direct_conn_cluster(
             cluster_id, "dc_cluster", url, token)
@@ -797,8 +796,8 @@ class TestClient(unittest.TestCase):
 
         # Define callback function for "http" table.
         def http_fn(row: pxapi.Row) -> None:
-            self.assertEqual(row["http_resp_body"], "foo")
-            self.assertEqual(row["http_resp_status"], 200)
+            self.assertEqual(row["resp_body"], "foo")
+            self.assertEqual(row["resp_status"], 200)
 
         script_executor.add_callback("http", http_fn)
 
@@ -827,63 +826,8 @@ class TestClient(unittest.TestCase):
 
         # Use the results API to run and get the data from the http table.
         for row in script_executor.results("http"):
-            self.assertEqual(row["http_resp_body"], "foo")
-            self.assertEqual(row["http_resp_status"], 200)
-
-    @unittest.skip("channel cache fails because global loop state changes")
-    def test_shared_grpc_channel_on_conns(self) -> None:
-        # Make sure the shraed grpc channel does what we expect.
-        num_create_channel_calls = 0
-
-        def conn_channel_fn(url: str) -> grpc.aio.Channel:
-            # Nonlocal because we're incrementing the outer variable.
-            nonlocal num_create_channel_calls
-            num_create_channel_calls += 1
-            return grpc.aio.insecure_channel(url)
-
-        px_client = pxapi.Client(
-            token=ACCESS_TOKEN,
-            server_url=self.url(),
-            # Channel functions for testing.
-            channel_fn=lambda url: grpc.insecure_channel(url),
-            conn_channel_fn=conn_channel_fn,
-        )
-
-        # Connect to a cluster.
-        conn = px_client.connect_to_cluster(
-            px_client.list_healthy_clusters()[0])
-
-        # Create fake data for table for cluster_uuid1.
-        http_table1 = self.http_table_factory.create_table(test_utils.table_id1)
-        self.fake_vizier_service.add_fake_data(conn.cluster_id, [
-            # Initialize the table on the stream with the metadata.
-            http_table1.metadata_response(),
-            # Send over a single-row batch.
-            http_table1.row_batch_response([["foo"], [200]]),
-            # Send an end-of-stream for the table.
-            http_table1.end(),
-        ])
-
-        # Create the script executor.
-        script_executor = conn.prepare_script(pxl_script)
-        script_executor.run()
-
-        self.assertEqual(num_create_channel_calls, 1)
-
-        # Creating another script will not create another channel call.
-        script_executor = conn.prepare_script(pxl_script)
-        script_executor.run()
-
-        self.assertEqual(num_create_channel_calls, 1)
-
-        # Reset cache, so now must create a new channel.
-        conn._channel_cache = None
-
-        # Now we expect the channel to be created again.
-        script_executor = conn.prepare_script(pxl_script)
-        script_executor.run()
-
-        self.assertEqual(num_create_channel_calls, 2)
+            self.assertEqual(row["resp_body"], "foo")
+            self.assertEqual(row["resp_status"], 200)
 
     def test_shared_grpc_channel_for_cloud(self) -> None:
         # Setup a direct connect cluster.
@@ -896,7 +840,7 @@ class TestClient(unittest.TestCase):
         port = dc_server.add_insecure_port("[::]:0")
         dc_server.start()
 
-        url = f"http://[::]:{port}"
+        url = f"http://localhost:{port}"
         token = cluster_id
         self.fake_cloud_service.add_direct_conn_cluster(
             cluster_id, "dc_cluster", url, token)

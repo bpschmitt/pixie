@@ -17,7 +17,7 @@
  */
 
 import { data as visData } from 'vis-network/standalone';
-import { SemanticType } from 'types/generated/vizierapi_pb';
+import { SemanticType } from 'app/types/generated/vizierapi_pb';
 import { getNamespaceFromEntityName, semTypeToShapeConfig } from './graph-utils';
 import { RequestGraphDisplay } from './request-graph';
 
@@ -33,7 +33,7 @@ export interface Entity {
 
   // Display configuration.
   shape?: string;
-  image?: { selected?: string; unselected?: string};
+  image?: { selected?: string; unselected?: string };
 }
 
 export interface Edge {
@@ -67,9 +67,9 @@ export interface RequestGraph {
  * Parses the data passed in on the request graph.
  */
 export class RequestGraphParser {
-  private readonly entities = new Array<Entity>();
+  private readonly entities: Entity[] = [];
 
-  private readonly edges = new Array<Edge>();
+  private readonly edges: Edge[] = [];
 
   // Keeps a mapping from pod to node. We use the pod name as identifier
   // since it's the lowest level and guaranteed to be unique.
@@ -83,15 +83,15 @@ export class RequestGraphParser {
     this.parseInputData(data, display);
   }
 
-  public getEdges() {
+  public getEdges(): Edge[] {
     return this.edges;
   }
 
-  public getEntities() {
+  public getEntities(): Entity[] {
     return this.entities;
   }
 
-  public getServiceList() {
+  public getServiceList(): string[] {
     return Object.keys(this.hasSvc);
   }
 
@@ -100,12 +100,12 @@ export class RequestGraphParser {
     data.forEach((value) => {
       const req = this.upsertPod(
         value[display.requestorServiceColumn],
-        value[display.requestorPodColumn] || '',
+        value[display.requestorPodColumn] || '<unknown service>',
         value[display.outboundBytesPerSecondColumn],
       );
       const resp = this.upsertPod(
         value[display.responderServiceColumn],
-        value[display.responderPodColumn] || '',
+        value[display.responderPodColumn] || '<unknown service>',
         value[display.inboundBytesPerSecondColumn],
       );
 

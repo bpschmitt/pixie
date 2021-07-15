@@ -70,8 +70,8 @@ TEST_F(ConnStatsBPFTest, UnclassifiedEvents) {
 
   std::vector<TaggedRecordBatch> tablets = ConsumeRecords(SocketTraceConnector::kConnStatsTableNum);
   ASSERT_FALSE(tablets.empty());
-  types::ColumnWrapperRecordBatch rb = tablets[0].records;
-  PrintRecordBatch("test", kConnStatsTable.ToProto(), rb);
+  const types::ColumnWrapperRecordBatch& rb = tablets[0].records;
+  PL_LOG_VAR(PrintConnStatsTable(rb));
 
   // Check server-side stats.
   {
@@ -146,8 +146,8 @@ TEST_F(ConnStatsBPFTest, RoleFromConnectAccept) {
 
   std::vector<TaggedRecordBatch> tablets = ConsumeRecords(SocketTraceConnector::kConnStatsTableNum);
   ASSERT_FALSE(tablets.empty());
-  types::ColumnWrapperRecordBatch rb = tablets[0].records;
-  PrintRecordBatch("test", kConnStatsTable.ToProto(), rb);
+  const types::ColumnWrapperRecordBatch& rb = tablets[0].records;
+  PL_LOG_VAR(PrintConnStatsTable(rb));
 
   // Check client-side.
   {
@@ -205,6 +205,8 @@ TEST_F(ConnStatsBPFTest, RoleFromConnectAccept) {
 // Test fixture that starts SocketTraceConnector after the connection was already established.
 class ConnStatsMidConnBPFTest : public testing::SocketTraceBPFTest</* TClientSideTracing */ false> {
  protected:
+  ConnStatsMidConnBPFTest() { FLAGS_stirling_conn_stats_sampling_ratio = 1; }
+
   void SetUp() override {
     LOG(INFO) << absl::Substitute("Test PID = $0", getpid());
     // Uncomment to enable tracing:
@@ -268,12 +270,30 @@ TEST_F(ConnStatsMidConnBPFTest, InferRemoteEndpointAndReport) {
   // Make sure traffic spans across multiple TransferData calls,
   // so that connection inference has a chance to kick in.
   // If this test becomes flaky, may want to try bumping this up to 4.
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 10000; ++i) {
     EXPECT_EQ(test_msg.size(), client_.Send(test_msg));
     while (!server_->Recv(&text)) {
     }
-    std::this_thread::sleep_for(kTransferDataPeriod);
   }
+
+  std::this_thread::sleep_for(2 * kTransferDataPeriod);
+
+  for (int i = 0; i < 10000; ++i) {
+    EXPECT_EQ(test_msg.size(), client_.Send(test_msg));
+    while (!server_->Recv(&text)) {
+    }
+  }
+
+  std::this_thread::sleep_for(2 * kTransferDataPeriod);
+
+  for (int i = 0; i < 10000; ++i) {
+    EXPECT_EQ(test_msg.size(), client_.Send(test_msg));
+    while (!server_->Recv(&text)) {
+    }
+  }
+
+  server_->Close();
+  client_.Close();
 
   StopTransferDataThread();
 
@@ -281,19 +301,19 @@ TEST_F(ConnStatsMidConnBPFTest, InferRemoteEndpointAndReport) {
 
   ASSERT_FALSE(tablets.empty());
 
-  PrintRecordBatch("test", kConnStatsTable.ToProto(), tablets[0].records);
+  const types::ColumnWrapperRecordBatch& rb = tablets[0].records;
+  PL_LOG_VAR(PrintConnStatsTable(rb));
 
   // Check client-side.
   {
-    auto& records = tablets[0].records;
-    auto indices = FindRecordIdxMatchesPID(records, conn_stats_idx::kUPID, getpid());
+    auto indices = FindRecordIdxMatchesPID(rb, conn_stats_idx::kUPID, getpid());
 
     // One of the records is the server and the other is the client.
     int s_idx = -1;
     int c_idx = -1;
 
     for (auto idx : indices) {
-      if (records[kRoleIdx]->Get<types::Int64Value>(idx).val == kRoleClient) {
+      if (rb[kRoleIdx]->Get<types::Int64Value>(idx).val == kRoleClient) {
         c_idx = idx;
       } else {
         s_idx = idx;
@@ -305,24 +325,22 @@ TEST_F(ConnStatsMidConnBPFTest, InferRemoteEndpointAndReport) {
     ASSERT_NE(s_idx, -1);
 
     // Check that we properly found a client and server record.
-    EXPECT_THAT(records[kRoleIdx]->Get<types::Int64Value>(c_idx).val, kRoleClient);
-    EXPECT_THAT(records[kRoleIdx]->Get<types::Int64Value>(s_idx).val, kRoleServer);
+    EXPECT_THAT(rb[kRoleIdx]->Get<types::Int64Value>(c_idx).val, kRoleClient);
+    EXPECT_THAT(rb[kRoleIdx]->Get<types::Int64Value>(s_idx).val, kRoleServer);
 
     // Check client record.
-    EXPECT_THAT(records[kProtocolIdx]->Get<types::Int64Value>(c_idx).val, kProtocolUnknown);
-    EXPECT_THAT(records[kConnOpenIdx]->Get<types::Int64Value>(c_idx).val, 1);
-    EXPECT_THAT(records[kConnCloseIdx]->Get<types::Int64Value>(c_idx).val, 0);
-    // TODO(oazizi): Investigate why this is not reliable.
-    // EXPECT_THAT(records[kBytesSentIdx]->Get<types::Int64Value>(c_idx).val, 60);
-    EXPECT_THAT(records[kBytesRecvIdx]->Get<types::Int64Value>(c_idx).val, 0);
+    EXPECT_THAT(rb[kProtocolIdx]->Get<types::Int64Value>(c_idx), kProtocolUnknown);
+    EXPECT_THAT(rb[kConnOpenIdx]->Get<types::Int64Value>(c_idx).val, 1);
+    EXPECT_THAT(rb[kConnCloseIdx]->Get<types::Int64Value>(c_idx).val, 1);
+    EXPECT_THAT(rb[kBytesSentIdx]->Get<types::Int64Value>(c_idx).val, 360012);
+    EXPECT_THAT(rb[kBytesRecvIdx]->Get<types::Int64Value>(c_idx).val, 0);
 
     // Check server record.
-    EXPECT_THAT(records[kProtocolIdx]->Get<types::Int64Value>(s_idx).val, kProtocolUnknown);
-    EXPECT_THAT(records[kConnOpenIdx]->Get<types::Int64Value>(s_idx).val, 1);
-    EXPECT_THAT(records[kConnCloseIdx]->Get<types::Int64Value>(s_idx).val, 0);
-    EXPECT_THAT(records[kBytesSentIdx]->Get<types::Int64Value>(s_idx).val, 0);
-    // TODO(oazizi): Investigate why this is not reliable.
-    // EXPECT_THAT(records[kBytesRecvIdx]->Get<types::Int64Value>(s_idx).val, 60);
+    EXPECT_THAT(rb[kProtocolIdx]->Get<types::Int64Value>(s_idx), kProtocolUnknown);
+    EXPECT_THAT(rb[kConnOpenIdx]->Get<types::Int64Value>(s_idx).val, 1);
+    EXPECT_THAT(rb[kConnCloseIdx]->Get<types::Int64Value>(s_idx).val, 1);
+    EXPECT_THAT(rb[kBytesSentIdx]->Get<types::Int64Value>(s_idx).val, 0);
+    EXPECT_THAT(rb[kBytesRecvIdx]->Get<types::Int64Value>(s_idx).val, 360012);
   }
 }
 

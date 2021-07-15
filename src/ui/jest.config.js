@@ -23,7 +23,6 @@ module.exports = {
     window: true,
   },
   setupFiles: [
-    '<rootDir>/src/testing/enzyme-setup.ts',
     'jest-canvas-mock',
   ],
   setupFilesAfterEnv: [
@@ -38,22 +37,24 @@ module.exports = {
     'tsx',
   ],
   moduleDirectories: [
-    'node_modules',
     '<rootDir>/src',
-    '<rootDir>/packages/pixie-components/src',
-    '<rootDir>/packages/pixie-api/src',
-    '<rootDir>/packages/pixie-api-react/src',
   ],
   moduleNameMapper: {
     '^.+.(jpg|jpeg|png|gif|svg)$': '<rootDir>/src/testing/file-mock.js',
-    '(\\.css|\\.scss$)|(normalize.css/normalize)|(^typeface)|(^exports-loader)': 'identity-obj-proxy',
-    'monaco-editor': '<rootDir>/node_modules/react-monaco-editor',
+    'monaco-editor': require.resolve('react-monaco-editor'),
+    '^configurable/(.*)': '<rootDir>/src/configurables/base/$1',
+    '^app/(.*)': '<rootDir>/src/$1',
   },
   resolver: null,
   transform: {
-    '^.+\\.tsx?$': 'ts-jest',
+    ...['ts', 'tsx', 'js', 'jsx'].reduce((a, ext) => ({
+      ...a,
+      [`^.+\\.${ext}$`]: ['esbuild-jest', {
+        loader: ext,
+        target: 'node12',
+      }]
+    }), {}),
     [`node_modules/(${esModules}).*\\.jsx?$`]: './jest-esm-transform',
-    '^.+\\.jsx?$': 'babel-jest',
     '^.+\\.toml$': 'jest-raw-loader',
   },
   testRegex: '.*test\\.(ts|tsx|js|jsx)$',

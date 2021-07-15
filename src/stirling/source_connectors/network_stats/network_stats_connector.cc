@@ -33,24 +33,16 @@ namespace stirling {
 using system::ProcParser;
 
 Status NetworkStatsConnector::InitImpl() {
-  sample_push_freq_mgr_.set_sampling_period(kSamplingPeriod);
-  sample_push_freq_mgr_.set_push_period(kPushPeriod);
+  sampling_freq_mgr_.set_period(kSamplingPeriod);
+  push_freq_mgr_.set_period(kPushPeriod);
   return Status::OK();
 }
 
 Status NetworkStatsConnector::StopImpl() { return Status::OK(); }
 
-void NetworkStatsConnector::TransferDataImpl(ConnectorContext* ctx, uint32_t table_num,
-                                             DataTable* data_table) {
-  DCHECK_LT(table_num, num_tables())
-      << absl::Substitute("Trying to access unexpected table: table_num=$0", table_num);
-
-  TransferNetworkStatsTable(ctx, data_table);
-}
-
 void NetworkStatsConnector::TransferDataImpl(ConnectorContext* ctx,
                                              const std::vector<DataTable*>& data_tables) {
-  DCHECK_EQ(data_tables.size(), 1);
+  DCHECK_EQ(data_tables.size(), 1) << "NetworkStatsConnector only has one data table.";
 
   if (data_tables[kNetStatsTableNum] != nullptr) {
     TransferNetworkStatsTable(ctx, data_tables[kNetStatsTableNum]);
@@ -61,7 +53,7 @@ void NetworkStatsConnector::TransferNetworkStatsTable(ConnectorContext* ctx,
                                                       DataTable* data_table) {
   const md::K8sMetadataState& k8s_md = ctx->GetK8SMetadata();
 
-  int64_t timestamp = AdjustedSteadyClockNowNS();
+  int64_t timestamp = CurrentTimeNS();
 
   for (const auto& [pod_name, pod_id] : k8s_md.pods_by_name()) {
     PL_UNUSED(pod_name);

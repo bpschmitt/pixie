@@ -17,37 +17,22 @@
  */
 
 import * as React from 'react';
-import {
-  WithStyles, withStyles,
-} from '@material-ui/core/styles';
-import { createStyles } from '@material-ui/styles';
 
-import SideBar from 'containers/App/sidebar';
-import { TopBar } from 'containers/App/topbar';
+import SideBar from 'app/containers/App/sidebar';
+import { TopBar } from 'app/containers/App/topbar';
 
-const styles = () => createStyles({});
-
-interface NavBarsProps extends WithStyles<typeof styles> {
-  children?: React.ReactNode;
-}
-
-const NavBars = ({
-  classes, children,
-}: NavBarsProps) => {
+const NavBars: React.FC = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState<boolean>(false);
-  const toggleSidebar = React.useCallback(() => setSidebarOpen((opened) => !opened), []);
+  const toggleSidebar = () => setSidebarOpen((open) => !open);
 
   return (
     <>
-      <TopBar toggleSidebar={toggleSidebar}>
+      <TopBar toggleSidebar={toggleSidebar} setSidebarOpen={setSidebarOpen}>
         {children}
       </TopBar>
-      <SideBar open={sidebarOpen} toggle={toggleSidebar} />
+      <SideBar open={sidebarOpen} />
     </>
   );
 };
-NavBars.defaultProps = {
-  children: null,
-};
 
-export default withStyles(styles)(NavBars);
+export default NavBars;

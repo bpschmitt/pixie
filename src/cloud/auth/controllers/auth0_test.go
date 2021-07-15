@@ -180,12 +180,15 @@ func TestAuth0ConnectorImpl_GetUserInfo(t *testing.T) {
               "email": "testuser@test.com",
               "name": "Test User",
               "picture": "picture.jpg",
-              "sub": "test_sub",
+							"user_id": "github|123990813094",
               "app_metadata": {
           			"foo": {
           				"pl_user_id": "test_pl_user_id"
           			}
-              }
+              },
+							"identities": [{
+								"provider": "github"
+							}]
          }
         `))
 		require.NoError(t, err)
@@ -206,6 +209,8 @@ func TestAuth0ConnectorImpl_GetUserInfo(t *testing.T) {
 	assert.Equal(t, "Test User", userInfo.Name)
 	assert.Equal(t, "picture.jpg", userInfo.Picture)
 	assert.Equal(t, "test_pl_user_id", userInfo.PLUserID)
+	assert.Equal(t, "github", userInfo.IdentityProvider)
+	assert.Equal(t, "github|123990813094", userInfo.AuthProviderID)
 }
 
 func TestAuth0ConnectorImpl_GetUserInfo_BadResponse(t *testing.T) {

@@ -48,6 +48,7 @@ gazelle(
 # gazelle:resolve go px.dev/pixie/src/api/proto/uuidpb //src/api/proto/uuidpb:uuid_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/api/proto/vispb //src/api/proto/vispb:vis_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/api/proto/vizierpb //src/api/proto/vizierpb:vizier_pl_go_proto
+# gazelle:resolve go px.dev/pixie/src/api/proto/vizierconfigpb //src/api/proto/vizierconfigpb:vizier_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/carnot/carnotpb //src/carnot/carnotpb:carnot_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/carnot/docspb //src/carnot/docspb:docs_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/carnot/planner/compilerpb //src/carnot/planner/compilerpb:compiler_status_pl_go_proto
@@ -60,6 +61,7 @@ gazelle(
 # gazelle:resolve go px.dev/pixie/src/cloud/artifact_tracker/artifacttrackerpb //src/cloud/artifact_tracker/artifacttrackerpb:artifact_tracker_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/cloud/auth/authpb //src/cloud/auth/authpb:auth_go_proto
 # gazelle:resolve go px.dev/pixie/src/cloud/auth/authpb //src/cloud/auth/authpb:auth_pl_go_proto
+# gazelle:resolve go px.dev/pixie/src/cloud/config_manager/configmanagerpb //src/cloud/config_manager/configmanagerpb:service_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/cloud/dnsmgr/dnsmgrpb //src/cloud/dnsmgr/dnsmgrpb:service_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/cloud/profile/profilepb //src/cloud/profile/profilepb:service_pl_go_proto
 # gazelle:resolve go px.dev/pixie/src/cloud/project_manager/projectmanagerpb //src/cloud/project_manager/projectmanagerpb:service_pl_go_proto
@@ -183,7 +185,9 @@ container_image(
     name = "pl_cc_bpf_image",
     base = ":pl_cc_base_image",
     directory = "/pl",
-    files = linux_headers_tarballs + linux_timeconst_files,
+    files = linux_headers_tarballs + linux_timeconst_files + [
+        "//src/stirling/binaries:stirling_ctrl",
+    ],
     visibility = ["//visibility:public"],
 )
 

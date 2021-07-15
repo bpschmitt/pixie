@@ -15,6 +15,23 @@
 // 000007_add_enable_approvals_column.down.sql
 // 000007_add_enable_approvals_column.up.sql
 // 000008_insert_default_user_value.up.sql
+// 000009_org_add_updated_created_at.down.sql
+// 000009_org_add_updated_created_at.up.sql
+// 000010_user_add_identity_provider.down.sql
+// 000010_user_add_identity_provider.up.sql
+// 000011_user_set_identity_provider_google_oauth2.up.sql
+// 000012_user_add_auth_provider_id.down.sql
+// 000012_user_add_auth_provider_id.up.sql
+// 000013_lengthen_profile_email.down.sql
+// 000013_lengthen_profile_email.up.sql
+// 000014_lengthen_auth_provider_id.down.sql
+// 000014_lengthen_auth_provider_id.up.sql
+// 000015_create_user_attributes_table.down.sql
+// 000015_create_user_attributes_table.up.sql
+// 000016_move_user_settings.down.sql
+// 000016_move_user_settings.up.sql
+// 000017_reformat_user_settings.down.sql
+// 000017_reformat_user_settings.up.sql
 package schema
 
 import (
@@ -391,6 +408,346 @@ func _000008_insert_default_user_valueUpSql() (*asset, error) {
 	return a, nil
 }
 
+var __000009_org_add_updated_created_atDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\xc8\x2f\x4a\x2f\xe6\x72\x09\xf2\x0f\x50\x70\xf6\xf7\x09\xf5\xf5\x53\x48\x2e\x4a\x4d\x2c\x49\x4d\x89\x4f\x2c\xb1\xe6\xc2\xab\xb0\xb4\x20\x05\xae\x10\x22\x11\x12\xe4\xe9\xee\xee\x1a\xa4\xe0\xe9\xa6\xe0\x1a\xe1\x19\x1c\x12\x0c\x55\x13\x0f\xd2\x1b\x8f\x50\xaf\xe0\xef\x07\x36\xce\x9a\x0b\x10\x00\x00\xff\xff\xb8\x59\x22\x6c\x8a\x00\x00\x00")
+
+func _000009_org_add_updated_created_atDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000009_org_add_updated_created_atDownSql,
+		"000009_org_add_updated_created_at.down.sql",
+	)
+}
+
+func _000009_org_add_updated_created_atDownSql() (*asset, error) {
+	bytes, err := _000009_org_add_updated_created_atDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000009_org_add_updated_created_at.down.sql", size: 138, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000009_org_add_updated_created_atUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\xb4\x90\x51\xab\x9b\x30\x18\x86\xef\xf3\x2b\xde\x0b\xe1\xb4\x30\xf7\x07\x0e\xbb\x48\xf5\xb3\x13\x6c\x22\x31\xa1\xbb\x3b\x84\xd3\xd4\x0a\xce\x74\x1a\xd7\xed\xdf\x0f\xed\xa4\xc2\x7a\x33\xc6\xbc\x11\xbe\x7c\x79\x9f\xf7\x49\x1c\x23\xef\x9a\xd0\xd8\xb6\xfd\x89\xc1\x05\x74\x1e\x27\x77\xb6\x63\x1b\x3e\x60\xf0\x08\x17\x1b\xe0\x7e\x34\x43\x68\xba\x1a\xbd\xbf\x0d\xb8\xd8\xef\x0e\x16\xc2\x14\x05\xde\x7b\x67\x83\x3b\xbd\xd9\x80\x77\xdf\x8e\x5f\x3b\xc6\x0b\x4d\x0a\x9a\xef\x0a\x82\xef\xeb\x01\x3c\x4d\x91\xc8\xc2\x1c\xc4\x7a\x5b\xe7\x07\xaa\x34\x3f\x94\xaf\x2c\x8e\x51\xb9\x80\x70\x71\x0b\x19\xc1\x43\xc8\xe3\x66\x8b\xb3\xef\x71\x1e\xc3\xd8\xbb\x99\xfd\x24\x7d\x1e\xfc\x99\x5f\x91\x46\x4a\x19\x37\x85\x46\xe7\x6f\x9b\xed\xcc\xf9\x17\xd5\xf1\x7a\xfa\x0b\xd5\xd5\xf6\x7f\x51\x5d\xe5\x3f\x51\x65\x89\x22\xae\x09\x52\x41\x51\x59\xf0\x84\x90\x19\x91\xe8\x5c\x2e\x37\xdf\x1e\x01\x9b\x2d\x03\x14\x69\xa3\x44\x05\xad\xf2\xfd\x9e\x14\x78\x85\x28\x62\xc0\x8e\xf6\xb9\x60\x98\x3f\x41\xc7\x8f\x2b\xee\xa7\x85\x76\x3f\xbd\x27\x4c\x4b\xd3\x84\x44\x3a\xfd\xa2\x08\xad\xed\xea\xd1\xd6\x0e\x2f\xd7\xf6\x5a\x0f\xdf\xda\x97\x47\xbf\x85\xf6\xbb\xd3\xa4\xb9\x2a\xc6\x76\x94\x49\x45\x30\x65\x3a\xcb\x88\xf9\x1d\x58\x26\x15\x88\x27\x9f\xa1\xe4\x11\xf4\x85\x12\xa3\x09\xa5\x92\x09\xa5\x46\xd1\x33\xbf\x57\xf6\x2b\x00\x00\xff\xff\x3e\x0e\xdd\xff\xe7\x02\x00\x00")
+
+func _000009_org_add_updated_created_atUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000009_org_add_updated_created_atUpSql,
+		"000009_org_add_updated_created_at.up.sql",
+	)
+}
+
+func _000009_org_add_updated_created_atUpSql() (*asset, error) {
+	bytes, err := _000009_org_add_updated_created_atUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000009_org_add_updated_created_at.up.sql", size: 743, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000010_user_add_identity_providerDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\xe6\x72\x09\xf2\x0f\x50\x70\xf6\xf7\x09\xf5\xf5\x53\xc8\x4c\x49\xcd\x2b\xc9\x2c\xa9\x8c\x2f\x28\xca\x2f\xcb\x4c\x49\x2d\xb2\xe6\x02\x04\x00\x00\xff\xff\xde\xb8\x87\x6f\x31\x00\x00\x00")
+
+func _000010_user_add_identity_providerDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000010_user_add_identity_providerDownSql,
+		"000010_user_add_identity_provider.down.sql",
+	)
+}
+
+func _000010_user_add_identity_providerDownSql() (*asset, error) {
+	bytes, err := _000010_user_add_identity_providerDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000010_user_add_identity_provider.down.sql", size: 49, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000010_user_add_identity_providerUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\xe6\x72\x74\x71\x51\x70\xf6\xf7\x09\xf5\xf5\x53\xc8\x4c\x49\xcd\x2b\xc9\x2c\xa9\x8c\x2f\x28\xca\x2f\xcb\x4c\x49\x2d\x52\x28\x4b\x2c\x4a\xce\x48\x2c\xd2\x30\x35\xd0\xb4\xe6\x02\x04\x00\x00\xff\xff\x02\x23\x6c\xc8\x3c\x00\x00\x00")
+
+func _000010_user_add_identity_providerUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000010_user_add_identity_providerUpSql,
+		"000010_user_add_identity_provider.up.sql",
+	)
+}
+
+func _000010_user_add_identity_providerUpSql() (*asset, error) {
+	bytes, err := _000010_user_add_identity_providerUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000010_user_add_identity_provider.up.sql", size: 60, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000011_user_set_identity_provider_google_oauth2UpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x5c\xd0\xb1\x6e\xf3\x30\x0c\x04\xe0\x3d\x4f\x71\x9b\xff\x7f\x70\x5a\x74\x2d\x3a\x04\x6d\xe6\x16\x70\x3a\x17\x4c\x44\x5b\x44\x25\xd1\x90\x28\xa7\x7e\xfb\xc2\x76\x90\xa1\x2b\x09\x1e\xbe\x63\xdb\xa2\x63\x83\xe3\x9e\x6a\x30\x4c\x14\x2a\xc3\x14\xcd\xa0\x3a\x04\x6e\x95\xaa\xf9\xa7\x06\x67\xbe\x50\x2d\x0c\xf3\x52\x20\x05\xe6\x19\x91\x24\x61\xd7\xb6\x28\x75\x1c\x35\x1b\x3b\x88\xe3\x64\x62\x33\xc6\xac\x93\x38\xce\xe8\xb3\x46\x1c\xaa\xf9\xc7\x3d\xde\xbb\x0e\xaf\x41\xab\x43\x2d\x9c\x0b\xae\x62\x7e\x1d\x2e\x7b\xfc\xf3\xb3\xcb\xf4\xf0\x9d\xc9\xb4\xfc\x5f\x83\xaf\x12\x02\x3c\x4d\x2b\x29\x52\xaa\x14\xc2\x8c\xcc\xb9\xa6\x4d\x72\xd1\x18\x29\xb9\x2d\xa9\xd9\x4e\x1b\x48\xbf\xf8\x66\x38\x1e\x83\xce\xec\x96\xa8\x33\xf7\x9a\x6f\xfe\x28\x43\x26\x13\x4d\xe0\x1f\x29\xc6\x6e\xbf\xfb\xfc\x78\x3b\x9c\x8e\x37\x57\x77\x3c\xdd\x9b\x7c\xdd\x9b\xbc\xfc\x7d\xca\xf3\xee\x37\x00\x00\xff\xff\xcd\x78\xda\xed\x3e\x01\x00\x00")
+
+func _000011_user_set_identity_provider_google_oauth2UpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000011_user_set_identity_provider_google_oauth2UpSql,
+		"000011_user_set_identity_provider_google_oauth2.up.sql",
+	)
+}
+
+func _000011_user_set_identity_provider_google_oauth2UpSql() (*asset, error) {
+	bytes, err := _000011_user_set_identity_provider_google_oauth2UpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000011_user_set_identity_provider_google_oauth2.up.sql", size: 318, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000012_user_add_auth_provider_idDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\xe6\x72\x09\xf2\x0f\x50\x70\xf6\xf7\x09\xf5\xf5\x53\x48\x2c\x2d\xc9\x88\x2f\x28\xca\x2f\xcb\x4c\x49\x2d\x8a\xcf\x4c\xb1\xe6\x02\x04\x00\x00\xff\xff\x24\x7e\xb4\x56\x30\x00\x00\x00")
+
+func _000012_user_add_auth_provider_idDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000012_user_add_auth_provider_idDownSql,
+		"000012_user_add_auth_provider_id.down.sql",
+	)
+}
+
+func _000012_user_add_auth_provider_idDownSql() (*asset, error) {
+	bytes, err := _000012_user_add_auth_provider_idDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000012_user_add_auth_provider_id.down.sql", size: 48, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000012_user_add_auth_provider_idUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x64\x8f\x41\x4b\xc4\x40\x0c\x85\xef\xfd\x15\xef\xb6\x0a\x76\xf1\xe2\xc9\x53\x75\x2a\x2c\x54\x05\xe9\x9e\x97\xb8\x9d\x3a\x61\xbb\xd3\x92\x64\x5a\xfc\xf7\x32\x2d\x1e\xc4\x6b\xde\xcb\x97\x2f\x65\x09\x4a\x16\x4e\x93\x8c\x33\x77\x5e\x4e\xdc\x81\x15\x16\x3c\x92\x7a\xc1\xc1\xc1\x02\x19\x28\xfe\xed\xe5\x54\xd1\x8f\x92\x93\x83\xdb\xa3\xcd\xad\x85\xbe\xc1\x3d\x68\xdb\x55\xfe\x8a\x0a\x8e\x58\xd8\x02\x08\x1d\xf7\xbd\x17\x1f\xad\x28\x4b\xf8\x2b\xf1\x80\xcf\x64\xeb\x2d\xa5\xab\xc7\x2f\xfb\x0e\x8b\xc7\x25\x8e\x0b\x6c\xc4\xc0\xf1\xb2\x29\x64\x1c\xd2\xb4\xd1\x2c\xb0\x62\x22\x31\x3e\xa7\x81\x56\x1d\xd9\x17\x55\xd3\xd6\x1f\x68\xab\xa7\xa6\x5e\x27\x5a\x54\xce\xe1\xf9\xbd\x39\xbe\xbe\xfd\xff\x73\x26\x39\x07\x92\x9b\x87\xfb\x5b\xb8\xfa\xa5\x3a\x36\x2d\x76\xbb\xc7\xe2\x27\x00\x00\xff\xff\x07\x62\x1a\xbb\x14\x01\x00\x00")
+
+func _000012_user_add_auth_provider_idUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000012_user_add_auth_provider_idUpSql,
+		"000012_user_add_auth_provider_id.up.sql",
+	)
+}
+
+func _000012_user_add_auth_provider_idUpSql() (*asset, error) {
+	bytes, err := _000012_user_add_auth_provider_idUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000012_user_add_auth_provider_id.up.sql", size: 276, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000013_lengthen_profile_emailDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\x56\x80\x88\x38\xfb\xfb\x84\xfa\xfa\x29\x14\x14\xe5\xa7\x65\xe6\xa4\xc6\x17\x64\x26\x97\x94\x16\xa5\x2a\x84\x44\x06\xb8\x2a\x84\x39\x06\x39\x7b\x38\x06\x29\x68\x18\x1a\x18\x68\x5a\x73\x11\x30\x22\x35\x37\x31\x33\x07\xab\x46\x40\x00\x00\x00\xff\xff\xad\x99\x4b\xee\x7c\x00\x00\x00")
+
+func _000013_lengthen_profile_emailDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000013_lengthen_profile_emailDownSql,
+		"000013_lengthen_profile_email.down.sql",
+	)
+}
+
+func _000013_lengthen_profile_emailDownSql() (*asset, error) {
+	bytes, err := _000013_lengthen_profile_emailDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000013_lengthen_profile_email.down.sql", size: 124, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000013_lengthen_profile_emailUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\x56\x80\x88\x38\xfb\xfb\x84\xfa\xfa\x29\x14\x14\xe5\xa7\x65\xe6\xa4\xc6\x17\x64\x26\x97\x94\x16\xa5\x2a\x84\x44\x06\xb8\x2a\x84\x39\x06\x39\x7b\x38\x06\x29\x68\x18\x1a\x18\x99\x68\x5a\x73\x11\x30\x23\x35\x37\x31\x33\x07\xbb\x4e\x40\x00\x00\x00\xff\xff\x1e\x45\x3e\x94\x7e\x00\x00\x00")
+
+func _000013_lengthen_profile_emailUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000013_lengthen_profile_emailUpSql,
+		"000013_lengthen_profile_email.up.sql",
+	)
+}
+
+func _000013_lengthen_profile_emailUpSql() (*asset, error) {
+	bytes, err := _000013_lengthen_profile_emailUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000013_lengthen_profile_email.up.sql", size: 126, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000014_lengthen_auth_provider_idDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\x56\x80\x88\x38\xfb\xfb\x84\xfa\xfa\x29\x24\x96\x96\x64\xc4\x17\x14\xe5\x97\x65\xa6\xa4\x16\xc5\x67\xa6\x28\x84\x44\x06\xb8\x2a\x84\x39\x06\x39\x7b\x38\x06\x29\x68\x98\x1a\x68\x5a\x73\x01\x02\x00\x00\xff\xff\xf0\x10\x4e\x1e\x43\x00\x00\x00")
+
+func _000014_lengthen_auth_provider_idDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000014_lengthen_auth_provider_idDownSql,
+		"000014_lengthen_auth_provider_id.down.sql",
+	)
+}
+
+func _000014_lengthen_auth_provider_idDownSql() (*asset, error) {
+	bytes, err := _000014_lengthen_auth_provider_idDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000014_lengthen_auth_provider_id.down.sql", size: 67, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000014_lengthen_auth_provider_idUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\xf4\x09\x71\x0d\x52\x08\x71\x74\xf2\x71\x55\x28\x2d\x4e\x2d\x2a\x56\x80\x88\x38\xfb\xfb\x84\xfa\xfa\x29\x24\x96\x96\x64\xc4\x17\x14\xe5\x97\x65\xa6\xa4\x16\xc5\x67\xa6\x28\x84\x44\x06\xb8\x2a\x84\x39\x06\x39\x7b\x38\x06\x29\x68\x18\x1a\x18\x99\x68\x5a\x73\x01\x02\x00\x00\xff\xff\x21\x91\xa2\x15\x45\x00\x00\x00")
+
+func _000014_lengthen_auth_provider_idUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000014_lengthen_auth_provider_idUpSql,
+		"000014_lengthen_auth_provider_id.up.sql",
+	)
+}
+
+func _000014_lengthen_auth_provider_idUpSql() (*asset, error) {
+	bytes, err := _000014_lengthen_auth_provider_idUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000014_lengthen_auth_provider_id.up.sql", size: 69, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000015_create_user_attributes_tableDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\x09\xf2\x0f\x50\x08\x71\x74\xf2\x71\x55\xf0\x74\x53\x70\x8d\xf0\x0c\x0e\x09\x56\x28\x2d\x4e\x2d\x8a\x4f\x2c\x29\x29\xca\x4c\x2a\x2d\x49\x2d\xb6\xe6\x02\x04\x00\x00\xff\xff\xfa\x14\xea\x74\x26\x00\x00\x00")
+
+func _000015_create_user_attributes_tableDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000015_create_user_attributes_tableDownSql,
+		"000015_create_user_attributes_table.down.sql",
+	)
+}
+
+func _000015_create_user_attributes_tableDownSql() (*asset, error) {
+	bytes, err := _000015_create_user_attributes_tableDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000015_create_user_attributes_table.down.sql", size: 38, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000015_create_user_attributes_tableUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x3c\xcd\xcd\x0a\x82\x40\x14\xc5\xf1\xfd\x7d\x8a\xb3\x54\xf0\x0d\x5a\x4d\x7a\x0d\xc9\x2c\x6e\xba\x70\x25\x8a\x37\x18\x10\x07\xe6\xe3\xfd\xc3\x8a\xb6\xff\xc3\x8f\x53\x0a\x9b\x9e\xd1\x9b\x73\xcb\x48\x41\xfd\x34\xc7\xe8\xed\x92\xa2\x06\x64\x84\x6f\xb3\x2b\x86\xa1\xa9\x0a\x02\xa2\x4b\x7e\x0a\xaa\x3b\x16\xe7\x36\x9d\x77\x54\x5c\x9b\xa1\xed\xf1\x9a\xb7\xa0\x05\x11\xf0\x90\xe6\x66\x64\xc4\x95\xc7\xec\xe7\xf3\xc3\xd6\x77\xe1\xe6\xd2\x1d\x1d\xff\x01\xc2\x35\x0b\x77\x25\x3f\x3f\x67\x21\xb3\x6b\x4e\xf9\x89\xde\x01\x00\x00\xff\xff\xb0\x47\xbc\x5c\x9b\x00\x00\x00")
+
+func _000015_create_user_attributes_tableUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000015_create_user_attributes_tableUpSql,
+		"000015_create_user_attributes_table.up.sql",
+	)
+}
+
+func _000015_create_user_attributes_tableUpSql() (*asset, error) {
+	bytes, err := _000015_create_user_attributes_tableUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000015_create_user_attributes_table.up.sql", size: 155, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000016_move_user_settingsDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\xf2\xf4\x0b\x76\x0d\x0a\x51\xf0\xf4\x0b\xf1\x57\x28\x2d\x4e\x2d\x8a\x2f\x4e\x2d\x29\xc9\xcc\x4b\x2f\x56\xd0\x00\x73\x33\x53\x74\x14\xb2\x53\x2b\x75\x14\xca\x12\x73\x4a\x53\x35\xb9\x82\x5d\x7d\x5c\x9d\x43\x14\xe0\x72\xea\x25\xf9\xa5\x20\x4d\xa9\x79\xea\x3a\x0a\x70\xb6\x95\x55\x59\x62\x51\x72\x46\x62\x91\x86\xa9\x81\xa6\x82\x5b\x90\xbf\x2f\x44\x47\x62\x49\x49\x51\x66\x52\x69\x49\x6a\xb1\x35\x17\x97\x8b\xab\x8f\x6b\x88\x2b\x76\x59\x40\x00\x00\x00\xff\xff\xa6\x30\x6c\xa6\x97\x00\x00\x00")
+
+func _000016_move_user_settingsDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000016_move_user_settingsDownSql,
+		"000016_move_user_settings.down.sql",
+	)
+}
+
+func _000016_move_user_settingsDownSql() (*asset, error) {
+	bytes, err := _000016_move_user_settingsDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000016_move_user_settings.down.sql", size: 151, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000016_move_user_settingsUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x6c\xce\xc1\xca\x82\x50\x10\x05\xe0\xfd\x7d\x8a\xb3\xfc\xff\x8d\x0f\xa0\xb8\x88\x9c\x48\x30\x0d\x9d\x68\x29\x57\x1c\xe2\x82\x28\x38\x73\x7b\xfe\x40\xa2\x16\xb6\x1b\x86\x73\x3e\x4e\x59\x77\xd4\x32\xca\x9a\x1b\x44\x95\xb5\xf7\x66\x6b\x18\xa2\x89\xe2\x6f\x7b\x84\xf1\xdf\x75\x54\xd1\x91\x11\x46\x9c\xda\xe6\xb2\x05\x35\x73\xee\x76\x2d\x0e\x4c\xbb\x5e\x47\x0c\x5b\xe2\xda\xab\xc8\x9c\x6b\xf2\xf4\x53\x94\x34\x1d\x96\x65\x12\x3f\x7f\x89\x5e\xc5\x2c\xcc\x0f\x85\x57\xa8\x03\xee\x67\x6a\x77\x5c\xf2\x5e\x81\x1c\x9f\x3b\x73\xae\xa0\x8a\x98\x7e\x60\xd9\x2b\x00\x00\xff\xff\x94\xe2\x5b\x7f\xd3\x00\x00\x00")
+
+func _000016_move_user_settingsUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000016_move_user_settingsUpSql,
+		"000016_move_user_settings.up.sql",
+	)
+}
+
+func _000016_move_user_settingsUpSql() (*asset, error) {
+	bytes, err := _000016_move_user_settingsUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000016_move_user_settings.up.sql", size: 211, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000017_reformat_user_settingsDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x6c\x8e\xb1\x8e\x82\x40\x14\x45\xfb\xf7\x15\xb7\x9c\x49\x28\x76\x37\xdb\x51\x21\x3c\xcc\x44\x05\x7c\x32\x05\x95\x21\x32\x51\xa2\xb1\x60\x80\xc4\xbf\x37\xa0\xb1\x50\xdb\x73\x72\x4f\x6e\x22\x79\x81\x32\x5a\xac\x19\x83\x77\xdd\xde\xbb\xbe\x6f\xaf\x47\x1f\x12\xc5\xc2\x51\xc9\xdf\x24\x14\xe1\x41\xda\x06\xd6\x9a\x24\x20\xe0\xec\x6e\x18\xeb\xee\x70\xaa\x3b\xf5\xfb\xf3\xf7\xaf\x27\x38\xd6\x97\xc1\xbd\x63\x02\x0a\x31\x9b\x48\x2a\xac\xb8\x52\xcf\x50\x30\x15\xe6\x91\xcd\xcc\xd6\x32\x3e\x45\x9a\x0b\x9b\x65\x36\xad\x5e\x56\x43\x38\x65\xe1\x2c\xe6\xdd\xfc\xc9\xab\xb6\xd1\xa4\x43\xba\x07\x00\x00\xff\xff\xd8\xde\x58\x07\xdb\x00\x00\x00")
+
+func _000017_reformat_user_settingsDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000017_reformat_user_settingsDownSql,
+		"000017_reformat_user_settings.down.sql",
+	)
+}
+
+func _000017_reformat_user_settingsDownSql() (*asset, error) {
+	bytes, err := _000017_reformat_user_settingsDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000017_reformat_user_settings.down.sql", size: 219, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var __000017_reformat_user_settingsUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x6c\x8e\xb1\x4e\xc3\x30\x10\x86\xf7\x7b\x8a\x7f\x4c\xa4\xbe\x41\x26\x93\x9c\x91\x45\x6a\x57\x17\x67\xe8\x54\x19\x62\x90\xa5\x28\x46\xd8\x1d\x78\x7b\x54\x02\x0c\xa8\xeb\xf7\xe9\xbe\xfb\x07\x71\x27\x78\xf5\x30\x32\xae\x25\x7e\x5c\x4a\xac\x35\x6d\x6f\xa5\x23\xea\x85\x95\xe7\x7b\x12\x0d\x61\x27\x69\xc1\x3c\x9b\xe1\x40\x40\xd8\xc2\xfa\x59\xd3\x4b\xb9\xe4\xf7\x9a\xaf\x15\xcf\x39\xaf\x31\x6c\x18\x58\xab\x79\xf4\x78\x0d\x6b\x89\x07\x22\xe0\x24\xe6\xa8\xe4\x8c\x27\x3e\x37\x3f\x99\xf6\x96\xd0\x4e\xd8\x3c\xda\x1b\xc7\x9f\x80\xb0\x66\x61\xdb\xf3\xf4\xfd\xb3\x34\x69\x69\xa9\xed\x88\x8c\x9d\x58\x3c\x8c\xf5\xee\xff\xbe\xdf\x63\x9a\x78\xe4\xde\x23\x2d\xd0\xe2\x8e\x7b\xa0\xfb\x0a\x00\x00\xff\xff\xe7\x3e\x47\xe9\xf5\x00\x00\x00")
+
+func _000017_reformat_user_settingsUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__000017_reformat_user_settingsUpSql,
+		"000017_reformat_user_settings.up.sql",
+	)
+}
+
+func _000017_reformat_user_settingsUpSql() (*asset, error) {
+	bytes, err := _000017_reformat_user_settingsUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "000017_reformat_user_settings.up.sql", size: 245, mode: os.FileMode(436), modTime: time.Unix(1, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -443,21 +800,38 @@ func AssetNames() []string {
 
 // _bindata is a table, holding each asset generator, mapped to its name.
 var _bindata = map[string]func() (*asset, error){
-	"000001_create_org_user_tables.down.sql":      _000001_create_org_user_tablesDownSql,
-	"000001_create_org_user_tables.up.sql":        _000001_create_org_user_tablesUpSql,
-	"000002_add_unique_constraint_email.down.sql": _000002_add_unique_constraint_emailDownSql,
-	"000002_add_unique_constraint_email.up.sql":   _000002_add_unique_constraint_emailUpSql,
-	"000003_add_profile_picture.down.sql":         _000003_add_profile_pictureDownSql,
-	"000003_add_profile_picture.up.sql":           _000003_add_profile_pictureUpSql,
-	"000004_add_updated_created_at.down.sql":      _000004_add_updated_created_atDownSql,
-	"000004_add_updated_created_at.up.sql":        _000004_add_updated_created_atUpSql,
-	"000005_create_user_settings_table.down.sql":  _000005_create_user_settings_tableDownSql,
-	"000005_create_user_settings_table.up.sql":    _000005_create_user_settings_tableUpSql,
-	"000006_add_approved_column.down.sql":         _000006_add_approved_columnDownSql,
-	"000006_add_approved_column.up.sql":           _000006_add_approved_columnUpSql,
-	"000007_add_enable_approvals_column.down.sql": _000007_add_enable_approvals_columnDownSql,
-	"000007_add_enable_approvals_column.up.sql":   _000007_add_enable_approvals_columnUpSql,
-	"000008_insert_default_user_value.up.sql":     _000008_insert_default_user_valueUpSql,
+	"000001_create_org_user_tables.down.sql":                 _000001_create_org_user_tablesDownSql,
+	"000001_create_org_user_tables.up.sql":                   _000001_create_org_user_tablesUpSql,
+	"000002_add_unique_constraint_email.down.sql":            _000002_add_unique_constraint_emailDownSql,
+	"000002_add_unique_constraint_email.up.sql":              _000002_add_unique_constraint_emailUpSql,
+	"000003_add_profile_picture.down.sql":                    _000003_add_profile_pictureDownSql,
+	"000003_add_profile_picture.up.sql":                      _000003_add_profile_pictureUpSql,
+	"000004_add_updated_created_at.down.sql":                 _000004_add_updated_created_atDownSql,
+	"000004_add_updated_created_at.up.sql":                   _000004_add_updated_created_atUpSql,
+	"000005_create_user_settings_table.down.sql":             _000005_create_user_settings_tableDownSql,
+	"000005_create_user_settings_table.up.sql":               _000005_create_user_settings_tableUpSql,
+	"000006_add_approved_column.down.sql":                    _000006_add_approved_columnDownSql,
+	"000006_add_approved_column.up.sql":                      _000006_add_approved_columnUpSql,
+	"000007_add_enable_approvals_column.down.sql":            _000007_add_enable_approvals_columnDownSql,
+	"000007_add_enable_approvals_column.up.sql":              _000007_add_enable_approvals_columnUpSql,
+	"000008_insert_default_user_value.up.sql":                _000008_insert_default_user_valueUpSql,
+	"000009_org_add_updated_created_at.down.sql":             _000009_org_add_updated_created_atDownSql,
+	"000009_org_add_updated_created_at.up.sql":               _000009_org_add_updated_created_atUpSql,
+	"000010_user_add_identity_provider.down.sql":             _000010_user_add_identity_providerDownSql,
+	"000010_user_add_identity_provider.up.sql":               _000010_user_add_identity_providerUpSql,
+	"000011_user_set_identity_provider_google_oauth2.up.sql": _000011_user_set_identity_provider_google_oauth2UpSql,
+	"000012_user_add_auth_provider_id.down.sql":              _000012_user_add_auth_provider_idDownSql,
+	"000012_user_add_auth_provider_id.up.sql":                _000012_user_add_auth_provider_idUpSql,
+	"000013_lengthen_profile_email.down.sql":                 _000013_lengthen_profile_emailDownSql,
+	"000013_lengthen_profile_email.up.sql":                   _000013_lengthen_profile_emailUpSql,
+	"000014_lengthen_auth_provider_id.down.sql":              _000014_lengthen_auth_provider_idDownSql,
+	"000014_lengthen_auth_provider_id.up.sql":                _000014_lengthen_auth_provider_idUpSql,
+	"000015_create_user_attributes_table.down.sql":           _000015_create_user_attributes_tableDownSql,
+	"000015_create_user_attributes_table.up.sql":             _000015_create_user_attributes_tableUpSql,
+	"000016_move_user_settings.down.sql":                     _000016_move_user_settingsDownSql,
+	"000016_move_user_settings.up.sql":                       _000016_move_user_settingsUpSql,
+	"000017_reformat_user_settings.down.sql":                 _000017_reformat_user_settingsDownSql,
+	"000017_reformat_user_settings.up.sql":                   _000017_reformat_user_settingsUpSql,
 }
 
 // AssetDir returns the file names below a certain
@@ -501,21 +875,38 @@ type bintree struct {
 }
 
 var _bintree = &bintree{nil, map[string]*bintree{
-	"000001_create_org_user_tables.down.sql":      &bintree{_000001_create_org_user_tablesDownSql, map[string]*bintree{}},
-	"000001_create_org_user_tables.up.sql":        &bintree{_000001_create_org_user_tablesUpSql, map[string]*bintree{}},
-	"000002_add_unique_constraint_email.down.sql": &bintree{_000002_add_unique_constraint_emailDownSql, map[string]*bintree{}},
-	"000002_add_unique_constraint_email.up.sql":   &bintree{_000002_add_unique_constraint_emailUpSql, map[string]*bintree{}},
-	"000003_add_profile_picture.down.sql":         &bintree{_000003_add_profile_pictureDownSql, map[string]*bintree{}},
-	"000003_add_profile_picture.up.sql":           &bintree{_000003_add_profile_pictureUpSql, map[string]*bintree{}},
-	"000004_add_updated_created_at.down.sql":      &bintree{_000004_add_updated_created_atDownSql, map[string]*bintree{}},
-	"000004_add_updated_created_at.up.sql":        &bintree{_000004_add_updated_created_atUpSql, map[string]*bintree{}},
-	"000005_create_user_settings_table.down.sql":  &bintree{_000005_create_user_settings_tableDownSql, map[string]*bintree{}},
-	"000005_create_user_settings_table.up.sql":    &bintree{_000005_create_user_settings_tableUpSql, map[string]*bintree{}},
-	"000006_add_approved_column.down.sql":         &bintree{_000006_add_approved_columnDownSql, map[string]*bintree{}},
-	"000006_add_approved_column.up.sql":           &bintree{_000006_add_approved_columnUpSql, map[string]*bintree{}},
-	"000007_add_enable_approvals_column.down.sql": &bintree{_000007_add_enable_approvals_columnDownSql, map[string]*bintree{}},
-	"000007_add_enable_approvals_column.up.sql":   &bintree{_000007_add_enable_approvals_columnUpSql, map[string]*bintree{}},
-	"000008_insert_default_user_value.up.sql":     &bintree{_000008_insert_default_user_valueUpSql, map[string]*bintree{}},
+	"000001_create_org_user_tables.down.sql":                 &bintree{_000001_create_org_user_tablesDownSql, map[string]*bintree{}},
+	"000001_create_org_user_tables.up.sql":                   &bintree{_000001_create_org_user_tablesUpSql, map[string]*bintree{}},
+	"000002_add_unique_constraint_email.down.sql":            &bintree{_000002_add_unique_constraint_emailDownSql, map[string]*bintree{}},
+	"000002_add_unique_constraint_email.up.sql":              &bintree{_000002_add_unique_constraint_emailUpSql, map[string]*bintree{}},
+	"000003_add_profile_picture.down.sql":                    &bintree{_000003_add_profile_pictureDownSql, map[string]*bintree{}},
+	"000003_add_profile_picture.up.sql":                      &bintree{_000003_add_profile_pictureUpSql, map[string]*bintree{}},
+	"000004_add_updated_created_at.down.sql":                 &bintree{_000004_add_updated_created_atDownSql, map[string]*bintree{}},
+	"000004_add_updated_created_at.up.sql":                   &bintree{_000004_add_updated_created_atUpSql, map[string]*bintree{}},
+	"000005_create_user_settings_table.down.sql":             &bintree{_000005_create_user_settings_tableDownSql, map[string]*bintree{}},
+	"000005_create_user_settings_table.up.sql":               &bintree{_000005_create_user_settings_tableUpSql, map[string]*bintree{}},
+	"000006_add_approved_column.down.sql":                    &bintree{_000006_add_approved_columnDownSql, map[string]*bintree{}},
+	"000006_add_approved_column.up.sql":                      &bintree{_000006_add_approved_columnUpSql, map[string]*bintree{}},
+	"000007_add_enable_approvals_column.down.sql":            &bintree{_000007_add_enable_approvals_columnDownSql, map[string]*bintree{}},
+	"000007_add_enable_approvals_column.up.sql":              &bintree{_000007_add_enable_approvals_columnUpSql, map[string]*bintree{}},
+	"000008_insert_default_user_value.up.sql":                &bintree{_000008_insert_default_user_valueUpSql, map[string]*bintree{}},
+	"000009_org_add_updated_created_at.down.sql":             &bintree{_000009_org_add_updated_created_atDownSql, map[string]*bintree{}},
+	"000009_org_add_updated_created_at.up.sql":               &bintree{_000009_org_add_updated_created_atUpSql, map[string]*bintree{}},
+	"000010_user_add_identity_provider.down.sql":             &bintree{_000010_user_add_identity_providerDownSql, map[string]*bintree{}},
+	"000010_user_add_identity_provider.up.sql":               &bintree{_000010_user_add_identity_providerUpSql, map[string]*bintree{}},
+	"000011_user_set_identity_provider_google_oauth2.up.sql": &bintree{_000011_user_set_identity_provider_google_oauth2UpSql, map[string]*bintree{}},
+	"000012_user_add_auth_provider_id.down.sql":              &bintree{_000012_user_add_auth_provider_idDownSql, map[string]*bintree{}},
+	"000012_user_add_auth_provider_id.up.sql":                &bintree{_000012_user_add_auth_provider_idUpSql, map[string]*bintree{}},
+	"000013_lengthen_profile_email.down.sql":                 &bintree{_000013_lengthen_profile_emailDownSql, map[string]*bintree{}},
+	"000013_lengthen_profile_email.up.sql":                   &bintree{_000013_lengthen_profile_emailUpSql, map[string]*bintree{}},
+	"000014_lengthen_auth_provider_id.down.sql":              &bintree{_000014_lengthen_auth_provider_idDownSql, map[string]*bintree{}},
+	"000014_lengthen_auth_provider_id.up.sql":                &bintree{_000014_lengthen_auth_provider_idUpSql, map[string]*bintree{}},
+	"000015_create_user_attributes_table.down.sql":           &bintree{_000015_create_user_attributes_tableDownSql, map[string]*bintree{}},
+	"000015_create_user_attributes_table.up.sql":             &bintree{_000015_create_user_attributes_tableUpSql, map[string]*bintree{}},
+	"000016_move_user_settings.down.sql":                     &bintree{_000016_move_user_settingsDownSql, map[string]*bintree{}},
+	"000016_move_user_settings.up.sql":                       &bintree{_000016_move_user_settingsUpSql, map[string]*bintree{}},
+	"000017_reformat_user_settings.down.sql":                 &bintree{_000017_reformat_user_settingsDownSql, map[string]*bintree{}},
+	"000017_reformat_user_settings.up.sql":                   &bintree{_000017_reformat_user_settingsUpSql, map[string]*bintree{}},
 }}
 
 // RestoreAsset restores an asset under the given directory

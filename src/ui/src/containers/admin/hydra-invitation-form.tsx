@@ -16,14 +16,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { gql, useMutation } from '@apollo/client';
 import * as React from 'react';
-import { OAUTH_PROVIDER } from 'containers/constants';
-import { Form, FormField } from '@pixie-labs/components';
-import { useInvitation } from '@pixie-labs/api-react';
+import { OAUTH_PROVIDER } from 'app/containers/constants';
+import { Form } from 'app/components';
+
+import { GQLUserInvite } from 'app/types/schema';
 import { makeStyles, Theme } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
+  invitationForm: {
+    padding: theme.spacing(2),
+  },
   invitationRow: {
     display: 'grid',
     gridTemplateAreas: '"name email" "link link"',
@@ -56,25 +61,22 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
 export const HydraInvitationForm: React.FC = () => {
   const classes = useStyles();
 
-  const [fields, setFields] = React.useState<FormField[]>([
-    {
-      name: 'Given Name',
-      type: 'text',
-      required: true,
-    },
-    {
-      name: 'Family Name',
-      type: 'text',
-      required: true,
-    },
-    {
-      name: 'Email Address',
-      type: 'text',
-      required: true,
-    },
-  ]);
+  const [inviteUser] = useMutation<
+  { InviteUser: GQLUserInvite }, { email: string, firstName: string, lastName: string }
+  >(gql`
+    mutation InviteUser($email: String!, $firstName: String!, $lastName: String!) {
+      InviteUser(email: $email, firstName: $firstName, lastName: $lastName) {
+        email
+        inviteLink
+      }
+    }
+  `);
 
-  const requestInvitation = useInvitation();
+  const [fields, setFields] = React.useState<Record<string, string>>({
+    'Given Name': '',
+    'Family Name': '',
+    'Email Address': '',
+  });
 
   const [knownLinks, setKnownLinks] = React.useState<Array<{
     givenName: string, familyName: string, email: string, link: string
@@ -83,41 +85,58 @@ export const HydraInvitationForm: React.FC = () => {
 
   const update = React.useCallback((e) => {
     const { name, value } = e.currentTarget;
-    const which = fields.findIndex((f) => f.name === name);
-    fields[which].value = value;
+    fields[name] = value;
     setFields(fields);
   }, [fields, setFields]);
-
-  const submitInvitation = React.useCallback(() => {
-    const records: Record<string, string> = fields.reduce((a, c) => ({ ...a, [c.name]: c.value }), {});
-    const givenName = records['Given Name'];
-    const familyName = records['Family Name'];
-    const email = records['Email Address'];
-    requestInvitation(givenName, familyName, email).then((invite) => {
-      setKnownLinks([...knownLinks, {
-        givenName, familyName, email: invite.email, link: invite.inviteLink,
-      }]);
-    }).catch((e) => {
-      if (typeof e === 'object' && e?.graphQLErrors) {
-        errors.push(e.graphQLErrors.map((gqlError) => gqlError.message));
-      } else {
-        errors.push(JSON.stringify(e));
-      }
-      setErrors(errors);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (OAUTH_PROVIDER !== 'hydra') return null;
 
   return (
-    <>
+    <div className={classes.invitationForm}>
       <Form
         submitBtnText='Invite'
         defaultSubmit={false}
-        onClick={submitInvitation}
+        onClick={() => {
+          inviteUser({
+            variables: {
+              email: fields['Email Address'] ?? '',
+              firstName: fields['Given Name'] ?? '',
+              lastName: fields['Family Name'] ?? '',
+            },
+          }).then(({ data }) => {
+            setKnownLinks([...knownLinks, {
+              givenName: fields['Given Name'] ?? '',
+              familyName: fields['Family Name'] ?? '',
+              email: data.InviteUser.email,
+              link: data.InviteUser.inviteLink,
+            }]);
+          }).catch((e) => {
+            if (typeof e === 'object' && e?.graphQLErrors) {
+              errors.push(e.graphQLErrors.map((gqlError) => gqlError.message));
+            } else {
+              errors.push(JSON.stringify(e));
+            }
+            setErrors(errors);
+          });
+        }}
         onChange={update}
-        fields={fields}
+        fields={[
+          {
+            name: 'Given Name',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'Family Name',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'Email Address',
+            type: 'text',
+            required: true,
+          },
+        ]}
         action=''
         method='POST'
       />
@@ -133,6 +152,6 @@ export const HydraInvitationForm: React.FC = () => {
         </div>
       ))}
       {errors.map((error) => <div key={error} className={classes.errorRow}>{error}</div>)}
-    </>
+    </div>
   );
 };

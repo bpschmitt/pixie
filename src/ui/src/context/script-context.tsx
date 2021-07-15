@@ -16,632 +16,321 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClusterContext } from 'common/cluster-context';
-import { Script } from 'utils/script-bundle';
-import { ScriptsContext } from 'containers/App/scripts-context';
-import {
-  LIVE_VIEW_SCRIPT_ARGS_KEY, LIVE_VIEW_SCRIPT_ID_KEY, LIVE_VIEW_PIXIE_SCRIPT_KEY,
-  LIVE_VIEW_VIS_SPEC_KEY, useSessionStorage,
-} from 'common/storage';
-import VizierGRPCClientContext from 'common/vizier-grpc-client-context';
-import {
-  VizierQueryError, GRPCStatusCode, BatchDataUpdate, VizierTable as Table,
-  containsMutation, isStreaming, VizierQueryFunc, ExecutionStateUpdate,
-} from '@pixie-labs/api';
-
 import * as React from 'react';
-
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import { SCRATCH_SCRIPT, ScriptsContext } from 'app/containers/App/scripts-context';
+import { getQueryFuncs } from 'app/containers/live/vis';
+import { Script } from 'app/utils/script-bundle';
 import {
-  parseVis, toJSON, Vis, getQueryFuncs, validateVis,
-} from 'containers/live/vis';
-import {
-  argsEquals, argsForVis, Arguments, validateArgValues,
-} from 'utils/args-utils';
-import urlParams from 'utils/url-params';
-import { useSnackbar } from '@pixie-labs/components';
+  PixieAPIContext, ExecutionStateUpdate, VizierQueryError, GRPCStatusCode, Table,
+} from 'app/api';
+import { containsMutation, isStreaming } from 'app/utils/pxl';
+import { Observable } from 'rxjs';
+import { checkExhaustive } from 'app/utils/check-exhaustive';
+import { ResultsContext } from 'app/context/results-context';
+import { useSnackbar } from 'app/components';
+import { argsForVis, validateArgs } from 'app/utils/args-utils';
+import { ClusterContext, useClusterConfig } from 'app/common/cluster-context';
 
-import {
-  getEntityParams, getLiveViewTitle, getNonEntityParams, LiveViewPage,
-  LiveViewPageScriptIds, matchLiveViewEntity, toEntityPathname,
-} from 'containers/live-widgets/utils/live-view-params';
-
-import { checkExhaustive } from 'utils/check-exhaustive';
-import { useLocation } from 'react-router-dom';
-import { SetStateFunc } from './common';
-
-import { ResultsContext } from './results-context';
-import { LayoutContext } from './layout-context';
-
-// The amount of time we should wait in between mutation retries, in ms.
-const mutationRetryMs = 5000; // 5s.
-
-export interface ExecuteArguments {
-  pxl: string;
-  vis: Vis;
-  args: Arguments;
-  id: string;
-  liveViewPage?: LiveViewPage;
-  skipURLUpdate?: boolean;
-}
+const NUM_MUTATION_RETRIES = 5;
+const MUTATION_RETRY_MS = 5000; // 5s.
 
 export interface ScriptContextProps {
-  liveViewPage: LiveViewPage;
-
-  args: Arguments;
-  setArgs: SetStateFunc<Arguments>;
-
-  visJSON: string;
-  vis: Vis;
-  setVis: SetStateFunc<Vis>;
-
-  setCancelExecution: SetStateFunc<() => void>;
-  cancelExecution?: () => void;
-
-  pxlEditorText: string;
-  visEditorText: string;
-  setVisEditorText: SetStateFunc<string>;
-  setPxlEditorText: SetStateFunc<string>;
-
-  pxl: string;
-  setPxl: SetStateFunc<string>;
-  title: string;
-  id: string;
-
-  setScript: (vis: Vis, pxl: string, args: Arguments, id: string,
-    liveViewPage?: LiveViewPage) => void;
-  execute: (execArgs: ExecuteArguments) => void;
-  saveEditorAndExecute: () => void;
-  parseVisOrShowError: (json: string) => Vis | null;
-  argsForVisOrShowError: (vis: Vis, args: Arguments, scriptId?: string) => Arguments;
-  readyToExecute: boolean;
+  /**
+   * The currently selected script, including any local edits the user has made.
+   */
+  script: Script;
+  /** Args that will be passed to the current script if it's executed. Mirrored from LiveRouteContext. */
+  args: Record<string, string | string[]>;
+  /**
+   * Updates the script and args that will be used if execute() is called.
+   */
+  setScriptAndArgs: (script: Script, args: Record<string, string | string[]>) => void;
+  /**
+   * Updates the script and args that will be used if execute() is called by a user manually running execute
+   * through the hot-key or button.
+   */
+  setScriptAndArgsManually: (script: Script, args: Record<string, string | string[]>) => void;
+  /** Runs the currently selected scripts, with the current args and any user-made edits to the PXL/Vis/etc. */
+  execute: () => void;
+  /**
+   * If there is a script currently running, cancels that execution.
+   * This happens automatically when running a new script; it should only need to be called manually for things like
+   * navigating away from the live view entirely or for certain error scenarios.
+   */
+  cancelExecution: () => void;
+  manual: boolean;
 }
 
-export const ScriptContext = React.createContext<ScriptContextProps>(null);
+export const ScriptContext = React.createContext<ScriptContextProps>({
+  script: null,
+  args: {},
+  manual: false,
+  setScriptAndArgs: () => {},
+  setScriptAndArgsManually: () => {},
+  execute: () => {},
+  cancelExecution: () => {},
+});
 
-function emptyVis(): Vis {
-  return { variables: [], widgets: [], globalFuncs: [] };
-}
-
-function getTitleOfScript(scriptId: string, scripts: Map<string, Script>): string {
-  if (scripts.has(scriptId)) {
-    return scripts.get(scriptId).title;
-  }
-  return scriptId;
-}
-
-const ScriptContextProvider: React.FC = ({ children }) => {
-  const location = useLocation();
-
-  const { scripts } = React.useContext(ScriptsContext);
-  const { selectedClusterName, setClusterByName, selectedClusterPrettyName } = React.useContext(ClusterContext);
-  const { client, healthy } = React.useContext(VizierGRPCClientContext);
-  const readyToExecute = client && healthy;
+export const ScriptContextProvider: React.FC = ({ children }) => {
+  const apiClient = React.useContext(PixieAPIContext);
   const {
-    setResults, setLoading, setStreaming, clearResults, tables: currentResultTables,
-  } = React.useContext(ResultsContext);
-  const { editorPanelOpen } = React.useContext(LayoutContext);
+    scriptId,
+    args,
+    embedState,
+    push,
+  } = React.useContext(LiveRouteContext);
+  const { selectedClusterName } = React.useContext(ClusterContext);
+  const { scripts: availableScripts, loading: loadingAvailableScripts } = React.useContext(ScriptsContext);
+  const resultsContext = React.useContext(ResultsContext);
   const showSnackbar = useSnackbar();
 
-  const entity = matchLiveViewEntity(location.pathname);
-  const [liveViewPage, setLiveViewPage] = React.useState<LiveViewPage>(entity.page);
-  const [visEditorText, setVisEditorText] = React.useState<string>(null);
-  const [pxlEditorText, setPxlEditorText] = React.useState<string>(null);
+  const clusterConfig = useClusterConfig();
 
-  const [cancelExecution, setCancelExecution] = React.useState<() => void>();
+  const [script, setScript] = React.useState<Script>(null);
+  const [manual, setManual] = React.useState(false);
 
-  // Args that are not part of an entity.
-  const [args, setArgs] = useSessionStorage<Arguments | null>(LIVE_VIEW_SCRIPT_ARGS_KEY, entity.params);
-
-  const [pxl, setPxl] = useSessionStorage(LIVE_VIEW_PIXIE_SCRIPT_KEY, '');
-  const [id, setId] = useSessionStorage(LIVE_VIEW_SCRIPT_ID_KEY,
-    entity.page === LiveViewPage.Default ? '' : LiveViewPageScriptIds.get(entity.page));
-
-  // We use a separation of visJSON states to prevent infinite update loops from happening.
-  // Otherwise, an update in the editor could trigger an update to some other piece of the pie.
-  // visJSON should be the incoming state to the vis editor.
-  // Vis Raw is the outgoing state from the vis editor.
-  const [visJSON, setVisJSONBase] = useSessionStorage<string>(LIVE_VIEW_VIS_SPEC_KEY);
-  const [vis, setVisBase] = React.useState(() => {
-    if (visJSON) {
-      const parsed = parseVis(visJSON);
-      if (parsed) {
-        return parsed;
+  // When the user changes the script entirely (like via breadcrumbs or a fresh navigation): reset PXL, vis, etc.
+  React.useEffect(() => {
+    if (!loadingAvailableScripts && availableScripts.has(scriptId)) {
+      const scriptObj = availableScripts.get(scriptId);
+      if (!scriptObj) {
+        return;
+      }
+      if (scriptObj.id === SCRATCH_SCRIPT.id) {
+        setScript((prevScript) => {
+          if (prevScript) {
+            return prevScript;
+          }
+          return scriptObj;
+        });
+      } else {
+        setScript(scriptObj);
       }
     }
-    return emptyVis();
-  });
+  }, [scriptId, loadingAvailableScripts, availableScripts]);
 
-  const parseVisOrShowError = (json: string): Vis | null => {
-    if (!json || !json.trim().length) {
-      return emptyVis();
+  const serializedArgs = JSON.stringify(args, Object.keys(args ?? {}).sort());
+
+  // Per-execution minutia
+  const [runningExecution, setRunningExecution] = React.useState<Observable<ExecutionStateUpdate> | null>(null);
+  const [cancelExecution, setCancelExecution] = React.useState<() => void | null>(null);
+  const [numExecutionTries, setNumExecutionTries] = React.useState(0);
+  const [hasMutation, setHasMutation] = React.useState(false);
+
+  // Timing: execute can be called before the API has finished returning all needed data, because VizierRoutingContext
+  // does not depend on the API and can update (triggering ScriptLoader) before required data has loaded for execution.
+  const readyToExecute = !loadingAvailableScripts;
+  const [awaitingExecution, setAwaitingExecution] = React.useState(false);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const execute: () => void = React.useMemo(() => () => {
+    if (!readyToExecute) {
+      setAwaitingExecution(true);
+      return;
     }
-    const parsed = parseVis(json);
-    if (parsed) {
-      return parsed;
-    }
-    setResults({ tables: {}, error: new VizierQueryError('vis', 'Error parsing VisSpec') });
-    return null;
-  };
 
-  const argsForVisOrShowError = (visToUse: Vis, argsToUse: Arguments, scriptId?: string): Arguments => {
-    const argValueErr = validateArgValues(visToUse, argsToUse);
-    if (argValueErr) {
-      setResults({ tables: {}, error: argValueErr });
-      return null;
+    if (!apiClient) throw new Error('Tried to execute a script before PixieAPIClient was ready!');
+    if (!script || !clusterConfig || !args) {
+      throw new Error('Tried to execute before script, cluster connection, and/or args were ready!');
     }
 
-    return argsForVis(visToUse, argsToUse, scriptId);
-  };
-
-  React.useEffect(() => {
-    const newArgs = argsForVis(vis, args);
-    // Need this check in order to avoid infinite rerender on 'args' changing.
-    if (!argsEquals(newArgs, args)) {
-      setArgs(newArgs);
+    const validationError = validateArgs(script.vis, args);
+    if (validationError != null) {
+      resultsContext.setResults({
+        error: validationError,
+        tables: {},
+      });
+      return;
     }
-  }, [vis, args, setArgs]);
 
-  // title is dependent on whether or not we are in an entity page.
-  const title = React.useMemo(() => {
-    const entityParams = getEntityParams(liveViewPage, args);
-    const newTitle = getLiveViewTitle(getTitleOfScript(id, scripts), liveViewPage,
-      entityParams, selectedClusterPrettyName);
-    document.title = newTitle;
-    return newTitle;
-  }, [liveViewPage, scripts, id, args, selectedClusterPrettyName]);
-
-  // Logic to set cluster
-
-  React.useEffect(() => {
-    if (entity.clusterName && entity.clusterName !== selectedClusterName) {
-      setClusterByName(entity.clusterName);
-    }
-    // We only want this useEffect to be called the first time the page is loaded.
-    // eslint-disable-next-line
-  }, []);
-
-  // Logic to set url params when location changes
-
-  React.useEffect(() => {
-    if (location.pathname !== '/live') {
-      urlParams.triggerOnChange();
-    }
-  }, [location.pathname]);
-
-  // Logic to update entity paths when live view page or cluster changes.
-
-  React.useEffect(() => {
-    clearResults();
-    const entityParams = getEntityParams(liveViewPage, args);
-    const entityURL = {
-      clusterName: selectedClusterName,
-      page: liveViewPage,
-      params: entityParams,
-    };
-    urlParams.setPathname(toEntityPathname(entityURL));
-    // DO NOT ADD clearResults() it destroys the UI.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClusterName, liveViewPage, args]);
-
-  React.useEffect(() => {
-    const scriptID = liveViewPage === LiveViewPage.Default ? id : '';
-    urlParams.setScript(scriptID, /* diff */'');
-  }, [liveViewPage, id]);
-
-  // Logic to update arguments (which are a combo of entity params and normal args)
-
-  React.useEffect(() => {
-    const nonEntityArgs = getNonEntityParams(liveViewPage, args);
-    urlParams.setArgs(nonEntityArgs);
-  }, [liveViewPage, args]);
-
-  // Logic to update vis spec.
-
-  // Note that this function does not update args, so it should only be called
-  // when variables will not be modified (such as for layouts).
-  const setVis = (newVis: Vis) => {
-    const visToSet = newVis ?? emptyVis();
-    setVisJSONBase(toJSON(visToSet));
-    setVisBase(visToSet);
-  };
-
-  // Logic to update the full script
-  const setScript = (newVis: Vis, newPxl: string, newArgs: Arguments, newID: string,
-    newLiveViewPage?: LiveViewPage) => {
-    setVis(newVis);
-    setPxl(newPxl);
-    setArgs(newArgs);
-    setId(newID);
-    if (newLiveViewPage != null) {
-      setLiveViewPage(newLiveViewPage);
-    }
-  };
-
-  // Logic to commit the URL to the history.
-  const commitURL = (page: LiveViewPage, urlId: string, urlArgs: Arguments) => {
-    // Only show the script as a query arg when we are not on an entity page.
-    const scriptId = page === LiveViewPage.Default ? (urlId || '') : '';
-    const nonEntityArgs = getNonEntityParams(page, urlArgs);
-    urlParams.commitAll(scriptId, '', nonEntityArgs);
-  };
-
-  const execute = (execArgs: ExecuteArguments) => {
     cancelExecution?.();
 
-    let queryFuncs: VizierQueryFunc[];
-    try {
-      queryFuncs = getQueryFuncs(execArgs.vis, execArgs.args);
-    } catch (e) {
-      showSnackbar({
-        message: e.message,
-        autoHideDuration: 5000,
-      });
-      return;
-    }
-
-    if (!healthy || !client) {
-      // TODO(philkuz): Maybe link to the admin page to show what is wrong.
-      showSnackbar({
-        message: 'We are having problems talking to the cluster right now, please try again later',
-        autoHideDuration: 5000,
-      });
-      return;
-    }
-
-    let errMsg: string;
-    let queryId: string;
-    let loaded = false;
-
-    const mutation = containsMutation(execArgs.pxl);
-    const streaming = isStreaming(execArgs.pxl);
-    // See the 'start' event handler in this file for why this is in a timeout
-    setTimeout(() => {
-      setLoading(true);
-      setStreaming(streaming);
-    });
-
-    if (!execArgs.skipURLUpdate) {
-      commitURL(execArgs.liveViewPage, execArgs.id, execArgs.args);
-    }
-
-    try {
-      // Make sure vis has proper references.
-      if (execArgs.vis) {
-        // validateVis yields errors if the spec has incorrectly defined variables, or if their values are invalid.
-        const visErrors = validateVis(execArgs.vis, execArgs.args);
-        if (visErrors.length) {
-          let message = visErrors.slice(0, 2).map((err) => err.message).join('\n');
-          if (visErrors.length > 2) message += `\n...and ${visErrors.length - 2} more`;
-          showSnackbar({
-            message: `Invalid or violated vis spec:\n${message}`,
-            autoHideDuration: 5000,
-          });
-          return;
-        }
-      }
-    } catch (error) {
-      showSnackbar({
-        message: error,
-        autoHideDuration: 5000,
-      });
-      return;
-    }
-
-    const onUpdate = (updates: BatchDataUpdate[]) => {
-      for (const update of updates) {
-        const table: Table = currentResultTables[update.id];
-        if (!table) {
-          currentResultTables[update.id] = { ...update, data: [update.batch] };
-        } else {
-          table.data.push(update.batch);
-        }
-      }
-      // Tell React that something changed so that it will re-render
-      setResults((results) => ({ ...results }));
-    };
-
-    const onResults = (queryResults) => {
-      if (queryResults && (streaming || queryResults.executionStats)) {
-        ({ queryId } = queryResults);
-        const newTables = {};
-        queryResults.tables.forEach((table) => {
-          newTables[table.name] = table;
-        });
-        setResults((results) => ({ tables: newTables, stats: queryResults.executionStats, error: results.error }));
-        if (!loaded) {
-          // See the 'start' event handler in this file for why this is in a timeout
-          setTimeout(() => {
-            setLoading(false);
-            loaded = true;
-          });
-        }
-      }
-
-      if (queryResults.executionStats) { // For non-streaming queries, the query is complete. Log analytics.
-        setCancelExecution(undefined);
-        analytics.track('Query Execution', {
-          status: 'success',
-          query: execArgs.pxl,
-          queryID: queryId,
-          title: execArgs.id,
-        });
-      }
-    };
-
-    const onError = (e) => {
-      let error = e;
-      if (Array.isArray(error) && error.length) {
-        error = error[0];
-      }
-
-      setResults({ tables: {}, error });
-      const { errType } = (error as VizierQueryError);
-      errMsg = error.message;
-
-      analytics.track('Query Execution', {
-        status: 'failed',
-        query: execArgs.pxl,
-        queryID: queryId,
-        error: errMsg,
-        title: execArgs.id,
-      });
-
-      if (errType === 'server' || !errType) {
-        showSnackbar({
-          message: errMsg,
-          action: () => execute(execArgs),
-          actionTitle: 'retry',
-          autoHideDuration: 5000,
-        });
-      }
-      if (!loaded) {
-        // See the 'start' event handler in this file for why this is in a timeout
-        setTimeout(() => {
-          setLoading(false);
-          loaded = true;
-        });
-      }
-    };
-
-    if (mutation) {
-      const runMutation = async () => {
-        let numTries = 5;
-
-        while (numTries > 0) {
-          cancelExecution?.();
-
-          let mutationComplete = false;
-          let cancelled = false;
-
-          let resolveMutationExecution = null;
-          const queryPromise = new Promise((resolve) => { resolveMutationExecution = resolve; });
-
-          const onMutationResults = (queryResults) => {
-            if (cancelled) {
-              resolveMutationExecution();
-              return;
-            }
-
-            if (queryResults.mutationInfo?.getStatus().getCode() === GRPCStatusCode.Unavailable) {
-              resolveMutationExecution();
-              setResults({ tables: {}, mutationInfo: queryResults.mutationInfo });
-            } else {
-              onResults(queryResults);
-              mutationComplete = true;
-            }
-          };
-
-          const onMutationError = (error) => {
-            resolveMutationExecution();
-            if (cancelled) {
-              return;
-            }
-
-            mutationComplete = true;
-            onError(error);
-          };
-
-          client.executeScript(
-            execArgs.pxl,
-            queryFuncs,
-            mutation,
-          ).subscribe((update: ExecutionStateUpdate) => {
-            switch (update.event.type) {
-              case 'start':
-                setCancelExecution(() => () => {
-                  update.cancel();
-                  setCancelExecution(undefined);
-                  // See the 'start' event handler in this file for why this is in a timeout
-                  setTimeout(() => {
-                    setStreaming(false);
-                    setLoading(false);
-                  });
-                });
-                break;
-              case 'metadata':
-              case 'mutation-info':
-              case 'stats':
-              case 'status':
-                onMutationResults(update.results);
-                break;
-              case 'error':
-                onMutationError(update.event.error);
-                break;
-              case 'data':
-              case 'cancel':
-                break;
-              default:
-                checkExhaustive(update.event);
-                break;
-            }
-          });
-
-          // Wait for the query to get a mutation response before retrying.
-          const cancelPromise = new Promise((resolve) => {
-            const unwrapped = cancelExecution;
-            const cancelFn = () => {
-              unwrapped?.();
-              setStreaming(false);
-              resolve(true);
-            };
-            setCancelExecution(() => cancelFn);
-          });
-
-          // eslint-disable-next-line
-          await Promise.race([queryPromise, cancelPromise]);
-
-          if (mutationComplete) {
-            return;
-          }
-
-          // eslint-disable-next-line
-          const cancel = await Promise.race([
-            new Promise((resolve) => setTimeout(resolve, mutationRetryMs)),
-            cancelPromise,
-          ]);
-          if (cancel) {
-            cancelled = true;
-            break;
-          }
-
-          numTries--;
-        }
-        if (!loaded) {
-          // See the 'start' event handler in this file for why this is in a timeout
-          setTimeout(() => {
-            setLoading(false);
-            loaded = true;
-          });
-        }
-
-        setResults({ tables: {}, error: new VizierQueryError('execution', 'Deploying tracepoints failed') });
-      };
-      runMutation().then();
+    if (containsMutation(script.code) && manual) {
+      setNumExecutionTries(NUM_MUTATION_RETRIES);
+    } else if (containsMutation(script.code) && !manual) {
+      // We should call execute() even when the mutation wasn't manually executed.
+      // This will trigger the proper loading states so that if someone directly
+      // opened the page to a mutation script, their cluster loading state resolves properly.
+      setNumExecutionTries(0);
     } else {
-      client.executeScript(
-        execArgs.pxl,
-        queryFuncs,
-        mutation,
-      ).subscribe((update: ExecutionStateUpdate) => {
-        switch (update.event.type) {
-          case 'start':
-            setCancelExecution(() => () => {
-              update.cancel();
-              setCancelExecution(undefined);
-              // Timeout so as not to modify one context while rendering another. Unfortunately, this creates a cascade
-              // of timing issues. Everything else that sets streaming/loading has to be in a timeout as well, or else
-              // a rapidly-returning query (like cached response or instant errors) can set loading to false BEFORE the
-              // execute sets it to true, causing infinite spinners. The other timeouts have comments pointing here.
-              // TODO(nick): Deduplicate code between paths in execute and unify on one observable to stop this from
-              //  happening. The current structure creates this mess by way of wacky mixing state with observables.
-              setTimeout(() => {
-                setStreaming(false);
-                setLoading(false);
-              });
+      setNumExecutionTries(1);
+    }
+
+    const execution = apiClient.executeScript(
+      clusterConfig,
+      script.code,
+      getQueryFuncs(script.vis, args, embedState.widget),
+    );
+    setRunningExecution(execution);
+    resultsContext.clearResults();
+    resultsContext.setLoading(true);
+    resultsContext.setStreaming(isStreaming(script.code));
+    setHasMutation(containsMutation(script.code));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiClient, script, embedState.widget, clusterConfig, serializedArgs, cancelExecution,
+    scriptId, resultsContext, manual]);
+
+  // As above: delay first execution if required information isn't ready yet.
+  React.useEffect(() => {
+    if (awaitingExecution && readyToExecute) {
+      execute();
+      setAwaitingExecution(false);
+    }
+  }, [readyToExecute, awaitingExecution, execute]);
+
+  React.useEffect(() => {
+    if (numExecutionTries <= 0) {
+      resultsContext.setLoading(false);
+      return () => {};
+    }
+
+    const timeout = setTimeout(() => {
+      if (hasMutation) {
+        setNumExecutionTries(numExecutionTries - 1);
+      }
+    }, MUTATION_RETRY_MS);
+
+    let cleanup = () => {};
+
+    const subscription = runningExecution?.subscribe((update: ExecutionStateUpdate) => {
+      switch (update.event.type) {
+        case 'start':
+          // Cleanup is called when the React hook is cleaned up. This contains a subset
+          // of the functions called when an execution is cancelled. This is to handle
+          // retries for mutations, since the script loading/mutation/streaming state
+          // should not be completely reset.
+          cleanup = () => {
+            update.cancel();
+            setCancelExecution(null);
+          };
+          setCancelExecution(() => () => {
+            update.cancel();
+            setHasMutation(false);
+            resultsContext.setStreaming(false);
+            resultsContext.setLoading(false);
+            setNumExecutionTries(0);
+            setCancelExecution(null);
+          });
+          break;
+        case 'data':
+          for (const updateBatch of update.event.data) {
+            const table: Table = resultsContext.tables[updateBatch.id];
+            if (!table) {
+              resultsContext.tables[updateBatch.id] = { ...updateBatch, data: [updateBatch.batch] };
+            } else {
+              table.data.push(updateBatch.batch);
+            }
+          }
+          resultsContext.setResults({
+            error: resultsContext.error,
+            stats: resultsContext.stats,
+            mutationInfo: resultsContext.mutationInfo,
+            tables: resultsContext.tables,
+          });
+          if (resultsContext.streaming) {
+            resultsContext.setLoading(false);
+          }
+          break;
+        case 'metadata':
+        case 'mutation-info':
+        case 'status':
+        case 'stats':
+          // Mutation schema not ready yet.
+          if (hasMutation && update.results.mutationInfo?.getStatus().getCode() === GRPCStatusCode.Unavailable) {
+            resultsContext.setResults({ tables: {}, mutationInfo: update.results.mutationInfo });
+            break;
+          }
+
+          // TODO(nick): Same performance improvement for tables (though this event happens once, maybe best to refresh)
+          if (update.results && (resultsContext.streaming || update.results.executionStats)) {
+            resultsContext.setResults({
+              error: resultsContext.error,
+              stats: update.results.executionStats,
+              mutationInfo: resultsContext.mutationInfo,
+              tables: update.results.tables.reduce((a, c) => ({ ...a, [c.name]: c }), {}),
             });
-            break;
-          case 'data':
-            onUpdate(update.event.data);
-            break;
-          case 'metadata':
-          case 'mutation-info':
-          case 'status':
-          case 'stats':
-            onResults(update.results);
-            break;
-          case 'error':
-            onError(update.event.error);
-            break;
-          case 'cancel':
-            break;
-          default:
-            checkExhaustive(update.event);
-            break;
-        }
-      });
-    }
-  };
+          }
+          // Query completed normally
+          if (update.results.executionStats) {
+            // TODO(nick): Make sure that `script` cannot be stale here, and always matches the running execution.
+            //  It should, considering the useEffect unsubscription, but double check.
+            setCancelExecution(null);
+            resultsContext.setLoading(false);
+            resultsContext.setStreaming(false);
+            setNumExecutionTries(0);
+            setHasMutation(false);
+            analytics.track('Query Execution', {
+              status: 'success',
+              query: script.code,
+              queryId: update.results.queryId,
+              title: script.id,
+            });
+          }
+          break;
+        case 'error': {
+          const error = Array.isArray(update.error) ? update.error[0] : update.error;
+          resultsContext.setResults({ error, tables: {} });
+          const { errType } = (error as VizierQueryError);
+          const errMsg = error.message;
+          resultsContext.setLoading(false);
+          resultsContext.setStreaming(false);
+          setNumExecutionTries(numExecutionTries - 1);
 
-  // Parses the editor and returns an ExecuteArguments object.
-  const getExecArgsFromEditor = (): ExecuteArguments => {
-    let execArgs: ExecuteArguments = {
-      pxl,
-      vis,
-      args,
-      id,
-      liveViewPage,
+          analytics.track('Query Execution', {
+            status: 'failed',
+            query: script.code,
+            queryID: update.results.queryId,
+            error: errMsg,
+            title: script.id,
+          });
+
+          if (errType === 'server' || !errType) {
+            showSnackbar({
+              message: errMsg,
+              action: () => execute(),
+              actionTitle: 'Retry',
+              autoHideDuration: 5000,
+            });
+          }
+          break;
+        }
+        case 'cancel':
+          break;
+        default:
+          checkExhaustive(update.event);
+          break;
+      }
+    });
+    return () => {
+      clearTimeout(timeout);
+      cleanup();
+      subscription?.unsubscribe();
     };
-    if (editorPanelOpen) {
-      let parsedVis = vis;
-      let pxlVal = pxl;
-      // If the editor has been lazy loaded, the editorText of the other thing will be null until it's been opened.
-      if (visEditorText !== null) {
-        parsedVis = parseVisOrShowError(visEditorText);
-        if (!parsedVis) {
-          return null;
-        }
-      }
-      if (pxlEditorText !== null) {
-        pxlVal = pxlEditorText;
-      }
+    // ONLY watch runningExecution for this. This effect only subscribes/unsubscribes from it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningExecution, numExecutionTries]);
 
-      const parsedArgs = argsForVisOrShowError(parsedVis, args, id);
-      if (!parsedArgs) {
-        return null;
-      }
-      execArgs = {
-        pxl: pxlVal,
-        vis: parsedVis,
-        args: parsedArgs,
-        id,
-        liveViewPage: LiveViewPage.Default,
-      };
-      // Verify the args are legit.
-    } else if (!argsForVisOrShowError(vis, args, id)) {
-      return null;
-    }
-    return execArgs;
-  };
+  const context: ScriptContextProps = React.useMemo(() => ({
+    script,
+    args,
+    manual,
+    setScriptAndArgs: (newScript: Script, newArgs: Record<string, string | string[]> = args) => {
+      setScript(newScript);
+      setManual(false);
 
-  const saveEditorAndExecute = () => {
-    const execArgs = getExecArgsFromEditor();
-    if (execArgs) {
-      setScript(execArgs.vis, execArgs.pxl, execArgs.args, execArgs.id, execArgs.liveViewPage);
-      execute(execArgs);
-    }
-  };
+      push(selectedClusterName, newScript.id, argsForVis(newScript.vis, newArgs), embedState);
+    },
+    setScriptAndArgsManually: (newScript: Script, newArgs: Record<string, string | string[]> = args) => {
+      setScript(newScript);
+      setManual(true);
 
-  return (
-    <ScriptContext.Provider
-      value={{
-        liveViewPage,
-        args,
-        setArgs,
-        pxlEditorText,
-        visEditorText,
-        setPxlEditorText,
-        setVisEditorText,
-        vis,
-        setVis,
-        visJSON,
-        parseVisOrShowError,
-        pxl,
-        setPxl,
-        title,
-        id,
-        setScript,
-        execute,
-        saveEditorAndExecute,
-        cancelExecution,
-        setCancelExecution,
+      push(selectedClusterName, newScript.id, argsForVis(newScript.vis, newArgs), embedState);
+    },
+    execute,
+    cancelExecution: (cancelExecution ?? (() => {})),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [script, execute, serializedArgs, selectedClusterName]);
 
-        argsForVisOrShowError,
-        readyToExecute,
-      }}
-    >
-      {children}
-    </ScriptContext.Provider>
-  );
+  return <ScriptContext.Provider value={context}>{children}</ScriptContext.Provider>;
 };
-
-export default ScriptContextProvider;

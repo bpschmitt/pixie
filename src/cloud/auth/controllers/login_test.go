@@ -63,10 +63,11 @@ func TestServer_LoginNewUser(t *testing.T) {
 	a.EXPECT().GetUserIDFromToken("tokenabc").Return(userID, nil)
 
 	fakeUserInfo := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
-		Picture:   "something",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		Picture:        "something",
+		AuthProviderID: "github|abcdefg",
 	}
 
 	fakeOrgInfo := &profilepb.OrgInfo{
@@ -77,10 +78,11 @@ func TestServer_LoginNewUser(t *testing.T) {
 
 	// Add PL UserID to the response of the second call.
 	fakeUserInfoSecondRequest := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
-		Picture:   "something",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		Picture:        "something",
+		AuthProviderID: "github|abcdefg",
 	}
 	a.EXPECT().SetPLMetadata(userID, gomock.Any(), gomock.Any()).Do(func(uid, plorgid, plid string) {
 		fakeUserInfoSecondRequest.PLUserID = plid
@@ -96,11 +98,12 @@ func TestServer_LoginNewUser(t *testing.T) {
 
 	mockProfile.EXPECT().
 		CreateUser(gomock.Any(), &profilepb.CreateUserRequest{
-			OrgID:     orgPb,
-			Username:  "abc@gmail.com",
-			FirstName: "first",
-			LastName:  "last",
-			Email:     "abc@gmail.com",
+			OrgID:          orgPb,
+			Username:       "abc@gmail.com",
+			FirstName:      "first",
+			LastName:       "last",
+			Email:          "abc@gmail.com",
+			AuthProviderID: "github|abcdefg",
 		}).
 		Return(utils.ProtoFromUUIDStrOrNil(userID), nil)
 
@@ -969,18 +972,20 @@ func TestServer_Signup_ExistingOrg(t *testing.T) {
 	a.EXPECT().GetUserIDFromToken("tokenabc").Return(userID, nil)
 
 	fakeUserInfo := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		AuthProviderID: "github|abcdefg",
 	}
 
 	// Add PL UserID to the response of the second call.
 	a.EXPECT().GetUserInfo(userID).Return(fakeUserInfo, nil)
 
 	fakeUserInfoSecondRequest := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		AuthProviderID: "github|abcdefg",
 	}
 	a.EXPECT().SetPLMetadata(userID, gomock.Any(), gomock.Any()).Do(func(uid, plorgid, plid string) {
 		fakeUserInfoSecondRequest.PLUserID = plid
@@ -1003,11 +1008,12 @@ func TestServer_Signup_ExistingOrg(t *testing.T) {
 		Return(fakeOrgInfo, nil)
 
 	mockProfile.EXPECT().CreateUser(gomock.Any(), &profilepb.CreateUserRequest{
-		OrgID:     orgPb,
-		Username:  "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
-		Email:     "abc@gmail.com",
+		OrgID:          orgPb,
+		Username:       "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		Email:          "abc@gmail.com",
+		AuthProviderID: "github|abcdefg",
 	}).Return(utils.ProtoFromUUIDStrOrNil(userID), nil)
 
 	viper.Set("jwt_signing_key", "jwtkey")
@@ -1049,18 +1055,20 @@ func TestServer_Signup_CreateOrg(t *testing.T) {
 	a.EXPECT().GetUserIDFromToken("tokenabc").Return(userID, nil)
 
 	fakeUserInfo := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		AuthProviderID: "github|abcdefg",
 	}
 
 	a.EXPECT().GetUserInfo(userID).Return(fakeUserInfo, nil)
 
 	// Add PL UserID to the response of the second call.
 	fakeUserInfoSecondRequest := &controllers.UserInfo{
-		Email:     "abc@gmail.com",
-		FirstName: "first",
-		LastName:  "last",
+		Email:          "abc@gmail.com",
+		FirstName:      "first",
+		LastName:       "last",
+		AuthProviderID: "github|abcdefg",
 	}
 	a.EXPECT().SetPLMetadata(userID, gomock.Any(), gomock.Any()).Do(func(uid, plorgid, plid string) {
 		fakeUserInfoSecondRequest.PLUserID = plid
@@ -1084,10 +1092,11 @@ func TestServer_Signup_CreateOrg(t *testing.T) {
 			DomainName: "abc@gmail.com",
 		},
 		User: &profilepb.CreateOrgAndUserRequest_User{
-			Username:  "abc@gmail.com",
-			FirstName: "first",
-			LastName:  "last",
-			Email:     "abc@gmail.com",
+			Username:       "abc@gmail.com",
+			FirstName:      "first",
+			LastName:       "last",
+			Email:          "abc@gmail.com",
+			AuthProviderID: "github|abcdefg",
 		},
 	}).
 		Return(&profilepb.CreateOrgAndUserResponse{
@@ -1424,4 +1433,212 @@ func TestServer_Login_UserNotApproved(t *testing.T) {
 	resp, err := doLoginRequest(getTestContext(), t, s, "")
 	assert.Nil(t, resp)
 	assert.Regexp(t, "user not yet approved to log in", err)
+}
+
+func TestServer_InviteUser(t *testing.T) {
+	inviteUserTests := []struct {
+		name string
+		// MustCreateUser is passed as part of the request.
+		mustCreate bool
+		// Whether the user already exists.
+		doesUserExist   bool
+		err             error
+		EnableApprovals bool
+	}{
+		{
+			name:          "invite_existing_user",
+			mustCreate:    false,
+			doesUserExist: true,
+			err:           nil,
+		},
+		{
+			name:          "create_user_if_does_not_exist",
+			mustCreate:    false,
+			doesUserExist: false,
+			err:           nil,
+		},
+		{
+			name:          "must_create_user_if_does_not_exist",
+			mustCreate:    true,
+			doesUserExist: false,
+			err:           nil,
+		},
+		{
+			name:            "enable_user_if_invited",
+			mustCreate:      true,
+			doesUserExist:   false,
+			err:             nil,
+			EnableApprovals: true,
+		},
+	}
+	for _, tc := range inviteUserTests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			a := mock_controllers.NewMockAuthProvider(ctrl)
+			mockProfile := mock_profile.NewMockProfileServiceClient(ctrl)
+			env, err := authenv.New(mockProfile)
+			require.NoError(t, err)
+			s, err := controllers.NewServer(env, a, nil)
+			require.NoError(t, err)
+
+			authProviderID := "8de9da32-aefe-22e2-91c5-11d250d430c8"
+			userID := utils.ProtoFromUUIDStrOrNil("7cb8c921-9dad-11d1-80b4-00c04fd430c8")
+			orgID := utils.ProtoFromUUIDStrOrNil("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+			req := &authpb.InviteUserRequest{
+				OrgID:     orgID,
+				Email:     "bobloblaw@lawblog.com",
+				FirstName: "Bob",
+				LastName:  "Loblaw",
+			}
+
+			if !tc.doesUserExist {
+				a.EXPECT().
+					CreateIdentity("bobloblaw@lawblog.com").
+					Return(&controllers.CreateIdentityResponse{
+						IdentityProvider: "kratos",
+						AuthProviderID:   authProviderID,
+					}, nil)
+				mockProfile.EXPECT().
+					GetUserByEmail(gomock.Any(), &profilepb.GetUserByEmailRequest{Email: "bobloblaw@lawblog.com"}).
+					Return(nil, errors.New("no such user"))
+				// We always create a user if one does not exist.
+				mockProfile.EXPECT().
+					CreateUser(gomock.Any(), &profilepb.CreateUserRequest{
+						OrgID:            orgID,
+						Username:         req.Email,
+						FirstName:        req.FirstName,
+						LastName:         req.LastName,
+						Email:            req.Email,
+						IdentityProvider: "kratos",
+						AuthProviderID:   authProviderID,
+					}).
+					Return(userID, nil)
+				a.EXPECT().
+					SetPLMetadata(
+						authProviderID,
+						utils.ProtoToUUIDStr(orgID),
+						utils.ProtoToUUIDStr(userID),
+					).Return(nil)
+
+				a.EXPECT().
+					GetUserInfo(authProviderID).
+					Return(&controllers.UserInfo{
+						AuthProviderID: authProviderID,
+						PLUserID:       utils.ProtoToUUIDStr(userID),
+					}, nil)
+				mockProfile.EXPECT().
+					UpdateUser(gomock.Any(),
+						&profilepb.UpdateUserRequest{
+							ID:         userID,
+							IsApproved: &types.BoolValue{Value: true},
+						}).
+					Return(nil, nil)
+			} else {
+				mockProfile.EXPECT().
+					GetUserByEmail(gomock.Any(), &profilepb.GetUserByEmailRequest{Email: "bobloblaw@lawblog.com"}).
+					Return(&profilepb.UserInfo{
+						AuthProviderID: authProviderID,
+					}, nil)
+			}
+
+			if !tc.doesUserExist || !tc.mustCreate {
+				a.EXPECT().
+					CreateInviteLink(authProviderID).Return(
+					&controllers.CreateInviteLinkResponse{
+						InviteLink: "self-service/recovery/methods",
+					}, nil)
+			}
+
+			resp, err := s.InviteUser(getTestContext(), req)
+
+			if tc.err == nil {
+				require.NoError(t, err)
+				assert.Regexp(t, "self-service/recovery/methods", resp.InviteLink)
+			} else {
+				assert.Equal(t, err, tc.err)
+			}
+		})
+	}
+}
+
+func TestServer_CreateOrgAndInviteUser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	a := mock_controllers.NewMockAuthProvider(ctrl)
+	mockProfile := mock_profile.NewMockProfileServiceClient(ctrl)
+	env, err := authenv.New(mockProfile)
+	require.NoError(t, err)
+	s, err := controllers.NewServer(env, a, nil)
+	require.NoError(t, err)
+
+	authProviderID := "8de9da32-aefe-22e2-91c5-11d250d430c8"
+	userID := utils.ProtoFromUUIDStrOrNil("7cb8c921-9dad-11d1-80b4-00c04fd430c8")
+	orgID := utils.ProtoFromUUIDStrOrNil("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	email := "admin@default.com"
+
+	mockProfile.EXPECT().CreateOrgAndUser(gomock.Any(), &profilepb.CreateOrgAndUserRequest{
+		Org: &profilepb.CreateOrgAndUserRequest_Org{
+			DomainName: "default.com",
+			OrgName:    "default",
+		},
+		User: &profilepb.CreateOrgAndUserRequest_User{
+			Username:         email,
+			FirstName:        "admin",
+			LastName:         "admin",
+			Email:            email,
+			AuthProviderID:   authProviderID,
+			IdentityProvider: "kratos",
+		},
+	}).
+		Return(&profilepb.CreateOrgAndUserResponse{
+			OrgID:  orgID,
+			UserID: userID,
+		}, nil)
+
+	a.EXPECT().
+		GetUserInfo(authProviderID).
+		Return(&controllers.UserInfo{
+			AuthProviderID: authProviderID,
+			PLUserID:       utils.ProtoToUUIDStr(userID),
+		}, nil)
+
+	a.EXPECT().
+		SetPLMetadata(
+			authProviderID,
+			utils.ProtoToUUIDStr(orgID),
+			utils.ProtoToUUIDStr(userID),
+		).Return(nil)
+
+	a.EXPECT().
+		CreateIdentity(email).
+		Return(&controllers.CreateIdentityResponse{
+			IdentityProvider: "kratos",
+			AuthProviderID:   authProviderID,
+		}, nil)
+
+	a.EXPECT().
+		CreateInviteLink(authProviderID).Return(
+		&controllers.CreateInviteLinkResponse{
+			InviteLink: "self-service/recovery/methods",
+		}, nil)
+
+	req := &authpb.CreateOrgAndInviteUserRequest{
+		Org: &authpb.CreateOrgAndInviteUserRequest_Org{
+			DomainName: "default.com",
+			OrgName:    "default",
+		},
+		User: &authpb.CreateOrgAndInviteUserRequest_User{
+			Username:  email,
+			FirstName: "admin",
+			LastName:  "admin",
+			Email:     email,
+		},
+	}
+
+	resp, err := s.CreateOrgAndInviteUser(getTestContext(), req)
+	require.NoError(t, err)
+	assert.Regexp(t, "self-service/recovery/methods", resp.InviteLink)
 }

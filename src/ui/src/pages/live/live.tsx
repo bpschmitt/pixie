@@ -16,38 +16,42 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GQLClusterStatus as ClusterStatus } from '@pixie-labs/api';
-import { scrollbarStyles, EditIcon } from '@pixie-labs/components';
-import VizierGRPCClientContext from 'common/vizier-grpc-client-context';
-import { ClusterContext } from 'common/cluster-context';
-import MoveIcon from '@material-ui/icons/OpenWith';
-import { ClusterInstructions } from 'containers/App/deploy-instructions';
 import * as React from 'react';
 
-import Link from '@material-ui/core/Link';
-import IconButton from '@material-ui/core/IconButton';
-import { Alert, AlertTitle } from '@material-ui/lab';
-import {
-  makeStyles, Theme,
-} from '@material-ui/core/styles';
+import { EditIcon, Footer, scrollbarStyles } from 'app/components';
+import { GQLClusterStatus } from 'app/types/schema';
+import { buildClass } from 'app/utils/build-class';
+import { makeStyles, Theme } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
-import Tooltip from '@material-ui/core/Tooltip';
+import {
+  Alert, AlertTitle, IconButton, Link, Tooltip,
+} from '@material-ui/core';
+import MoveIcon from '@material-ui/icons/OpenWith';
 
-import Canvas from 'containers/live/canvas';
-import CommandInput from 'containers/command-input/command-input';
-import { withLiveViewContext } from 'containers/live/context';
-import { LayoutContext } from 'context/layout-context';
-import { ScriptContext } from 'context/script-context';
-import { LiveTourContext } from 'containers/App/live-tour';
-import { DataDrawerSplitPanel } from 'containers/data-drawer/data-drawer';
-import { EditorSplitPanel } from 'containers/editor/editor';
-import { ScriptLoader } from 'containers/live/script-loader';
-import LiveViewShortcutsProvider from 'containers/live/shortcuts';
-import LiveViewTitle from 'containers/live/title';
-import LiveViewBreadcrumbs from 'containers/live/breadcrumbs';
-import NavBars from 'containers/App/nav-bars';
-import { SCRATCH_SCRIPT } from 'containers/App/scripts-context';
-import { CONTACT_ENABLED } from 'containers/constants';
+import { Copyright } from 'configurable/copyright';
+import { ClusterContext } from 'app/common/cluster-context';
+import { DataDrawerContextProvider } from 'app/context/data-drawer-context';
+import EditorContextProvider, { EditorContext } from 'app/context/editor-context';
+import { LayoutContext, LayoutContextProvider } from 'app/context/layout-context';
+import { ScriptContext, ScriptContextProvider } from 'app/context/script-context';
+import { ResultsContextProvider } from 'app/context/results-context';
+import { Script } from 'app/utils/script-bundle';
+
+import { ClusterInstructions } from 'app/containers/App/deploy-instructions';
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import NavBars from 'app/containers/App/nav-bars';
+import { SCRATCH_SCRIPT, ScriptsContext } from 'app/containers/App/scripts-context';
+import { DataDrawerSplitPanel } from 'app/containers/data-drawer/data-drawer';
+import { EditorSplitPanel } from 'app/containers/editor/editor';
+import Canvas from 'app/containers/live/canvas';
+import LiveViewBreadcrumbs from 'app/containers/live/breadcrumbs';
+import { ScriptLoader } from 'app/containers/live/script-loader';
+import LiveViewShortcutsProvider from 'app/containers/live/shortcuts';
+import { CONTACT_ENABLED } from 'app/containers/constants';
+import ExecuteScriptButton from 'app/containers/live/execute-button';
+import ClusterSelector from 'app/containers/live/cluster-selector';
+import { LiveTourContextProvider } from 'app/containers/App/live-tour';
+import { PixieAPIClient, PixieAPIContext } from 'app/api';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
   root: {
@@ -58,11 +62,17 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     color: theme.palette.text.primary,
     ...scrollbarStyles(theme),
   },
-  content: {
-    marginLeft: theme.spacing(8),
-    marginTop: theme.spacing(2),
+  main: {
+    flexGrow: 1,
     display: 'flex',
-    flex: 1,
+    flexFlow: 'column nowrap',
+    overflow: 'auto',
+  },
+  mainContent: {
+    marginLeft: theme.spacing(8),
+    paddingTop: theme.spacing(2),
+    display: 'flex',
+    flex: '1 0 auto',
     minWidth: 0,
     minHeight: 0,
     flexDirection: 'column',
@@ -73,8 +83,31 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     overflowY: 'auto',
     overflowX: 'hidden',
   },
+  embeddedMain: {
+    marginLeft: 0,
+  },
+  widgetMain: {
+    paddingTop: 0,
+  },
+  mainFooter: {
+    marginLeft: theme.spacing(8),
+    flex: '0 0 auto',
+  },
   spacer: {
     flex: 1,
+  },
+  execute: {
+    display: 'flex',
+  },
+  combinedBreadcrumbsAndRun: {
+    display: 'flex',
+    marginRight: theme.spacing(3),
+  },
+  nestedBreadcrumbs: {
+    flex: 1,
+  },
+  nestedRun: {
+    display: 'flex',
   },
   title: {
     ...theme.typography.h3,
@@ -104,6 +137,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   },
   canvas: {
     marginLeft: theme.spacing(0.5),
+    height: '100%',
   },
   hidden: {
     display: 'none',
@@ -119,6 +153,8 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   iconButton: {
     marginRight: theme.spacing(1),
     padding: theme.spacing(0.5),
+    width: theme.spacing(4),
+    height: theme.spacing(4),
   },
   iconPanel: {
     marginTop: 0,
@@ -135,51 +171,72 @@ const ScriptOptions = ({
   const {
     editorPanelOpen, setEditorPanelOpen, isMobile,
   } = React.useContext(LayoutContext);
+
+  if (isMobile) {
+    return <></>;
+  }
+
   return (
-    <>
-      {
-        !isMobile
-        && (
-          <div className={classes.iconPanel}>
-            <Tooltip title={`${editorPanelOpen ? 'Close' : 'Open'} editor`} className={classes.iconButton}>
-              <IconButton className={classes.iconButton} onClick={() => setEditorPanelOpen(!editorPanelOpen)}>
-                <EditIcon className={editorPanelOpen ? classes.iconActive : classes.iconInactive} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={`${widgetsMoveable ? 'Disable' : 'Enable'} move widgets`} className={classes.iconButton}>
-              <IconButton onClick={() => setWidgetsMoveable(!widgetsMoveable)}>
-                <MoveIcon className={widgetsMoveable ? classes.iconActive : classes.iconInactive} />
-              </IconButton>
-            </Tooltip>
-          </div>
-        )
-      }
-    </>
+    <div className={classes.iconPanel}>
+      <Tooltip title={`${editorPanelOpen ? 'Close' : 'Open'} editor`} className={classes.iconButton}>
+        <IconButton className={classes.iconButton} onClick={() => setEditorPanelOpen(!editorPanelOpen)}>
+          <EditIcon className={editorPanelOpen ? classes.iconActive : classes.iconInactive} />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={`${widgetsMoveable ? 'Disable' : 'Enable'} move widgets`} className={classes.iconButton}>
+        <IconButton onClick={() => setWidgetsMoveable(!widgetsMoveable)}>
+          <MoveIcon className={widgetsMoveable ? classes.iconActive : classes.iconInactive} />
+        </IconButton>
+      </Tooltip>
+    </div>
   );
 };
 
 interface ClusterLoadingProps {
-  clusterUnhealthy: boolean;
-  clusterStatus: ClusterStatus;
-  clusterName: string | null;
-  clusterUID: string;
+  clusterPrettyName: string;
+  clusterStatus: GQLClusterStatus;
+  script: Script;
+  healthy: boolean;
 }
 
-const ClusterLoadingComponent = (props: ClusterLoadingProps) => {
-  // Options:
-  // 1. Name of the cluster
-  const formatStatus = React.useMemo(
-    () => props.clusterStatus.replace('CS_', '').toLowerCase(),
-    [props.clusterStatus]);
+const ClusterLoadingComponent = ({
+  clusterPrettyName, clusterStatus, script, healthy,
+}: ClusterLoadingProps) => {
+  const { loading: loadingAvailableScripts } = React.useContext(ScriptsContext);
 
-  const actionMsg = React.useMemo(
-    (): JSX.Element => {
-      if (props.clusterStatus === ClusterStatus.CS_DISCONNECTED) {
-        return (<div>Please redeploy Pixie to the cluster or choose another cluster.</div>);
-      }
+  const formattedStatus = React.useMemo(
+    () => clusterStatus.replace('CS_', '').toLowerCase(),
+    [clusterStatus]);
 
-      if (CONTACT_ENABLED) {
-        return (
+  if (clusterStatus === GQLClusterStatus.CS_DISCONNECTED) {
+    return (
+      <div>
+        <Alert severity='error'>
+          <AlertTitle>
+            {`Cluster '${clusterPrettyName}' is disconnected`}
+          </AlertTitle>
+          <div>
+            {`Pixie instrumentation on '${clusterPrettyName}' is ${formattedStatus}.`}
+          </div>
+          <div>
+            Please redeploy Pixie to the cluster or choose another cluster.
+          </div>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (clusterStatus !== GQLClusterStatus.CS_HEALTHY) {
+    return (
+      <div>
+        <Alert severity='error'>
+          <AlertTitle>
+            {`Cluster '${clusterPrettyName}' unavailable`}
+          </AlertTitle>
+          <div>
+            {`Pixie instrumentation on '${clusterPrettyName}' is ${formattedStatus}.`}
+          </div>
+          {CONTACT_ENABLED && (
           <div>
             <div>
               Need help?&nbsp;
@@ -187,73 +244,121 @@ const ClusterLoadingComponent = (props: ClusterLoadingProps) => {
               .
             </div>
           </div>
-        );
-      }
-      return <div />;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.clusterStatus, props.clusterUID]);
+          )}
+        </Alert>
+      </div>
+    );
+  }
 
-  return (
-    <>
-      {props.clusterUnhealthy ? (
-        <div>
-          <Alert severity='error'>
-            <AlertTitle>
-              {`Cluster '${props.clusterName}' unavailable`}
-            </AlertTitle>
-            <div>
-              {`Pixie instrumentation on '${props.clusterName}' is ${formatStatus}.`}
-            </div>
-            {actionMsg}
-          </Alert>
-        </div>
-      ) : (
-        <ClusterInstructions message='Connecting to cluster...' />
-      )}
-    </>
-  );
+  if (!loadingAvailableScripts && !script) {
+    return <div> Script name invalid, choose a new script in the dropdown</div>;
+  }
+
+  if (!healthy) {
+    return <ClusterInstructions message='Connecting to cluster...' />;
+  }
+
+  return <></>;
 };
 
-// Timeout before we display the cluster as unhealthy, in milliseconds.
-const UNHEALTHY_CLUSTER_TIMEOUT = 5000;
+const Nav: React.FC<{
+  widgetsMoveable: boolean,
+  setWidgetsMoveable: React.Dispatch<React.SetStateAction<boolean>>,
+}> = ({ widgetsMoveable, setWidgetsMoveable }) => {
+  const classes = useStyles();
+  const {
+    embedState: { isEmbedded },
+  } = React.useContext(LiveRouteContext);
+
+  if (isEmbedded) {
+    return <></>;
+  }
+
+  return <>
+    <NavBars>
+      <ClusterSelector />
+      <div className={classes.spacer} />
+      <ScriptOptions
+        classes={classes}
+        widgetsMoveable={widgetsMoveable}
+        setWidgetsMoveable={setWidgetsMoveable}
+      />
+      <div className={classes.execute}>
+        <ExecuteScriptButton />
+      </div>
+    </NavBars>
+    <div className={classes.dataDrawer}>
+      <DataDrawerSplitPanel />
+    </div>
+  </>;
+};
+
+const BreadcrumbsWithOptionalRun: React.FC = () => {
+  const classes = useStyles();
+  const {
+    embedState: { isEmbedded, widget },
+  } = React.useContext(LiveRouteContext);
+
+  if (widget) {
+    return <></>;
+  }
+
+  if (!isEmbedded) {
+    return <LiveViewBreadcrumbs />;
+  }
+
+  return <div className={classes.combinedBreadcrumbsAndRun}>
+    <div className={classes.nestedBreadcrumbs}>
+      <LiveViewBreadcrumbs />
+    </div>
+    <div className={classes.nestedRun}>
+      <ExecuteScriptButton />
+    </div>
+  </div>;
+};
 
 const LiveView: React.FC = () => {
   const classes = useStyles();
 
-  const {
-    saveEditorAndExecute,
-    cancelExecution,
-    id: activeScriptId,
-    pxl: activeScriptCode,
-  } = React.useContext(ScriptContext);
-  const { loading, clusterStatus } = React.useContext(VizierGRPCClientContext);
-  const {
-    setDataDrawerOpen, setEditorPanelOpen, isMobile,
-  } = React.useContext(LayoutContext);
-
+  const { selectedClusterName, selectedClusterPrettyName, selectedClusterStatus } = React.useContext(ClusterContext);
+  const { script, args, cancelExecution } = React.useContext(ScriptContext);
+  const { saveEditor } = React.useContext(EditorContext);
+  const { isMobile, setEditorPanelOpen, setDataDrawerOpen } = React.useContext(LayoutContext);
   const [widgetsMoveable, setWidgetsMoveable] = React.useState(false);
-
-  const [commandOpen, setCommandOpen] = React.useState<boolean>(false);
-  const { tourOpen } = React.useContext(LiveTourContext);
-  const commandReallyOpen = commandOpen && !tourOpen;
-  const toggleCommandOpen = React.useCallback(() => setCommandOpen((opened) => !opened), []);
-  const { selectedClusterPrettyName, selectedCluster } = React.useContext(ClusterContext);
-  const [unhealthyClusterName, setUnhealthyCluster] = React.useState<string | null>(null);
+  const {
+    embedState: { isEmbedded, widget },
+  } = React.useContext(LiveRouteContext);
 
   const hotkeyHandlers = {
-    'pixie-command': toggleCommandOpen,
     'toggle-editor': () => setEditorPanelOpen((editable) => !editable),
+    execute: () => saveEditor(),
     'toggle-data-drawer': () => setDataDrawerOpen((open) => !open),
-    execute: () => saveEditorAndExecute(),
+    // TODO(philkuz,PC-917) Pixie Command shortcut has been removed while we work to resolve its quirks.
+    'pixie-command': () => {},
   };
 
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+
+  const cloudClient = (React.useContext(PixieAPIContext) as PixieAPIClient).getCloudClient();
+
+  const healthy = cloudClient && selectedClusterStatus === GQLClusterStatus.CS_HEALTHY;
+
+  // Healthy might flicker on and off. We only care to show the loading state for first load,
+  // and want to ignore future health check failures. So we use healthyOnce to start as false
+  // and transition to true once. After the transition, it will always stay true.
+  const [healthyOnce, setHealthyOnce] = React.useState(false);
+  React.useCallback(() => {
+    setHealthyOnce((prev) => (prev || healthy));
+  }, [healthy]);
+
+  // Opens the editor if the current script is a scratch script.
   React.useEffect(() => {
-    if (activeScriptId === SCRATCH_SCRIPT.id && activeScriptCode === SCRATCH_SCRIPT.code) {
+    if (script?.id === SCRATCH_SCRIPT.id && script?.code === SCRATCH_SCRIPT.code) {
       setEditorPanelOpen(true);
     }
-  }, [activeScriptId, activeScriptCode, setEditorPanelOpen]);
+  }, [script?.code, script?.id, setEditorPanelOpen]);
 
+  // Cancel execution if the window unloads.
   React.useEffect(() => {
     const listener = () => {
       cancelExecution?.();
@@ -266,12 +371,14 @@ const LiveView: React.FC = () => {
     };
   }, [cancelExecution]);
 
+  // Hides the movable widgets button on mobile.
   React.useEffect(() => {
     if (isMobile) {
       setWidgetsMoveable(false);
     }
   }, [isMobile]);
 
+  // Enable escape key to stop setting widgets as movable.
   React.useEffect(() => {
     const handleEsc = (event) => {
       if (event.keyCode === 27) {
@@ -284,61 +391,42 @@ const LiveView: React.FC = () => {
       window.removeEventListener('keydown', handleEsc);
     };
   }, [setWidgetsMoveable]);
-  // eslint-disable-next-line consistent-return
-  React.useEffect(() => {
-    if (loading) {
-      setUnhealthyCluster(null);
-      const intervalId = setInterval(() => {
-        setUnhealthyCluster(selectedClusterPrettyName);
-      }, UNHEALTHY_CLUSTER_TIMEOUT);
-      return () => clearInterval(intervalId);
-    }
-  }, [loading, selectedClusterPrettyName]);
 
-  const canvasRef = React.useRef<HTMLDivElement>(null);
+  if (!selectedClusterName || !args) return null;
 
   return (
     <div className={classes.root}>
       <LiveViewShortcutsProvider handlers={hotkeyHandlers}>
-        <NavBars>
-          <div className={classes.spacer} />
-          <ScriptOptions
-            classes={classes}
-            widgetsMoveable={widgetsMoveable}
-            setWidgetsMoveable={setWidgetsMoveable}
-          />
-        </NavBars>
-        <div className={classes.dataDrawer}>
-          <DataDrawerSplitPanel />
-        </div>
-        <EditorSplitPanel className={classes.editorPanel}>
-          <div className={classes.content}>
-            <LiveViewBreadcrumbs />
-            <>
-              {
-                loading ? (
-                  <div className='center-content'>
-                    <ClusterLoadingComponent
-                      clusterUnhealthy={
-                        unhealthyClusterName
-                        && unhealthyClusterName === selectedClusterPrettyName
-                      }
-                      clusterStatus={clusterStatus}
-                      clusterName={selectedClusterPrettyName}
-                      clusterUID={selectedCluster}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <ScriptLoader />
-                    <div className={classes.canvas} ref={canvasRef}>
-                      <Canvas editable={widgetsMoveable} parentRef={canvasRef} />
-                    </div>
-                    <CommandInput open={commandReallyOpen} onClose={toggleCommandOpen} />
-                  </>
-                )
-              }
-            </>
+        <Nav
+          widgetsMoveable={widgetsMoveable}
+          setWidgetsMoveable={setWidgetsMoveable}
+        />
+        <EditorSplitPanel>
+          <div className={classes.main}>
+            <div className={buildClass(
+              classes.mainContent,
+              isEmbedded && classes.embeddedMain,
+              widget && classes.widgetMain,
+            )}>
+              <BreadcrumbsWithOptionalRun />
+              {(selectedClusterStatus === GQLClusterStatus.CS_HEALTHY && script && healthy) ? (
+                <div className={classes.canvas} ref={canvasRef}>
+                  <Canvas editable={widgetsMoveable} parentRef={canvasRef} />
+                </div>
+              ) : (
+                <div className='center-content'>
+                  <ClusterLoadingComponent
+                    clusterPrettyName={selectedClusterPrettyName}
+                    clusterStatus={selectedClusterStatus}
+                    script={script}
+                    healthy={healthyOnce}
+                  />
+                </div>
+              )}
+            </div>
+            {!isEmbedded && <div className={classes.mainFooter}>
+              <Footer copyright={Copyright} />
+            </div>}
           </div>
         </EditorSplitPanel>
       </LiveViewShortcutsProvider>
@@ -346,4 +434,21 @@ const LiveView: React.FC = () => {
   );
 };
 
-export default withLiveViewContext(LiveView);
+const ContextualizedLiveView: React.FC = () => (
+  <LayoutContextProvider>
+    <LiveTourContextProvider>
+      <DataDrawerContextProvider>
+        <ResultsContextProvider>
+          <ScriptContextProvider>
+            <EditorContextProvider>
+              <ScriptLoader />
+              <LiveView />
+            </EditorContextProvider>
+          </ScriptContextProvider>
+        </ResultsContextProvider>
+      </DataDrawerContextProvider>
+    </LiveTourContextProvider>
+  </LayoutContextProvider>
+);
+
+export default ContextualizedLiveView;

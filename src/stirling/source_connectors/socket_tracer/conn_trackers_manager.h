@@ -28,6 +28,7 @@
 
 #include "src/stirling/source_connectors/socket_tracer/conn_tracker.h"
 #include "src/stirling/utils/obj_pool.h"
+#include "src/stirling/utils/stat_counter.h"
 
 DECLARE_double(stirling_conn_tracker_cleanup_threshold);
 
@@ -51,6 +52,9 @@ class ConnTrackerGenerations {
    */
   std::pair<ConnTracker*, bool> GetOrCreate(uint64_t tsid, ConnTrackerPool* tracker_pool);
 
+  /**
+   * Return true if a ConnTracker created at the specified time stamp exists.
+   */
   bool Contains(uint64_t tsid) const;
 
   /**
@@ -74,8 +78,6 @@ class ConnTrackerGenerations {
 
   // Keep a pointer to the ConnTracker generation with the highest TSID.
   ConnTracker* oldest_generation_ = nullptr;
-
-  friend class ConnTrackerGenerationsTest;
 };
 
 /**
@@ -86,6 +88,26 @@ class ConnTrackerGenerations {
  */
 class ConnTrackersManager {
  public:
+  enum class StatKey {
+    kTotal,
+    kReadyForDestruction,
+
+    kCreated,
+    kDestroyed,
+    kDestroyedGens,
+
+    kProtocolUnknown,
+    kProtocolHTTP,
+    kProtocolHTTP2,
+    kProtocolMySQL,
+    kProtocolCQL,
+    kProtocolPGSQL,
+    kProtocolDNS,
+    kProtocolRedis,
+    kProtocolMongo,
+    kProtocolKafka,
+  };
+
   ConnTrackersManager();
 
   /**
@@ -100,7 +122,7 @@ class ConnTrackersManager {
    * Returns the latest generation of a connection tracker for the given pid and fd.
    * If there is no tracker for {pid, fd}, returns error::NotFound.
    */
-  StatusOr<const ConnTracker*> GetConnTracker(uint32_t pid, uint32_t fd) const;
+  StatusOr<const ConnTracker*> GetConnTracker(uint32_t pid, int32_t fd) const;
 
   /**
    * Deletes trackers that are ReadyForDestruction().
@@ -114,6 +136,16 @@ class ConnTrackersManager {
    */
   std::string DebugInfo() const;
 
+  /**
+   * Computes the count of ConnTracker objects for each protocol and stores them into stats_.
+   */
+  void ComputeProtocolStats();
+
+  /**
+   * Returns a string representing the stats of ConnTracker objects.
+   */
+  std::string StatsString() const;
+
  private:
   // Simple consistency DCHECKs meant for enforcing invariants.
   void DebugChecks() const;
@@ -125,14 +157,12 @@ class ConnTrackersManager {
 
   std::list<ConnTracker*> active_trackers_;
 
-  // Keep track of total number of trackers, and other counts.
-  // Used to check for consistency.
-  size_t num_trackers_ = 0;
-  size_t num_trackers_ready_for_destruction_ = 0;
-
   // A pool of unused trackers that can be recycled.
   // This is useful for avoiding memory reallocations.
   ConnTrackerPool trackers_pool_;
+
+  // Records statistics of ConnTracker for reporting and consistency check.
+  utils::StatCounter<StatKey> stats_;
 };
 
 }  // namespace stirling

@@ -16,6 +16,7 @@
 
 load("@io_bazel_rules_docker//cc:image.bzl", "cc_image")
 load("@io_bazel_rules_docker//container:container.bzl", "container_push")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bazel:pl_build_system.bzl", "pl_cc_binary")
 
 package(default_visibility = ["//src/stirling:__subpackages__"])
@@ -104,4 +105,13 @@ container_push(
     registry = "gcr.io",
     repository = "pl-dev-infra/stirling_profiler",
     tag = "{BUILD_USER}",
+)
+
+cc_binary(
+    name = "stirling_ctrl",
+    srcs = ["stirling_ctrl.c"],
+    visibility = [
+        "//:__pkg__",
+        "//src/stirling:__subpackages__",
+    ],
 )

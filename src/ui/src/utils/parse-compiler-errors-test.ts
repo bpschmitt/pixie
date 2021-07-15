@@ -16,11 +16,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CompilerError, ErrorDetails, Status } from 'types/generated/vizierapi_pb';
+import { CompilerError, ErrorDetails, Status } from 'app/types/generated/vizierapi_pb';
 
 import { ParseCompilerErrors } from './parse-compiler-errors';
 
-jest.mock('containers/constants', () => ({ DOMAIN_NAME: 'dev.withpixie.dev' }));
+jest.mock('app/containers/constants', () => ({ DOMAIN_NAME: 'dev.withpixie.dev' }));
 
 function createCompilerDetailError({ line, col, msg }): ErrorDetails {
   const compilerErr = new CompilerError();

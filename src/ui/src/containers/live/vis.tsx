@@ -18,10 +18,10 @@
 
 import {
   VizierQueryError, VizierQueryArg, VizierQueryFunc, GRPCStatusCode,
-} from '@pixie-labs/api';
-import { ArgTypeMap, getArgTypesForVis } from 'utils/args-utils';
+} from 'app/api';
+import { ArgTypeMap, argTypesForVis } from 'app/utils/args-utils';
 
-import { Status } from 'types/generated/vizierapi_pb';
+import { Status } from 'app/types/generated/vizierapi_pb';
 import { ChartPosition } from './layout';
 
 interface FuncArg {
@@ -71,25 +71,29 @@ export interface Vis {
   globalFuncs: GlobalFunc[];
 }
 
+// Parses vis and errors out instead of silently hiding the error.
 export function parseVis(json: string): Vis {
-  try {
-    const parsed = JSON.parse(json);
-    if (typeof parsed === 'object') {
-      if (!parsed.variables) {
-        parsed.variables = [];
-      }
-      if (!parsed.widgets) {
-        parsed.widgets = [];
-      }
-      if (!parsed.globalFuncs) {
-        parsed.globalFuncs = [];
-      }
-      return parsed as Vis;
-    }
-  } catch (e) {
-    // Tslint doesn't allow empty blocks.
+  if (!json) {
+    return {
+      variables: [],
+      widgets: [],
+      globalFuncs: [],
+    };
   }
-  return null;
+  const parsed = JSON.parse(json);
+  if (typeof parsed !== 'object') {
+    throw new VizierQueryError('vis', 'did not parse object');
+  }
+  if (!parsed.variables) {
+    parsed.variables = [];
+  }
+  if (!parsed.widgets) {
+    parsed.widgets = [];
+  }
+  if (!parsed.globalFuncs) {
+    parsed.globalFuncs = [];
+  }
+  return parsed as Vis;
 }
 
 // Gets the name of the table backing this widget. It will either be globalFuncOutputName, the name
@@ -146,6 +150,7 @@ function preprocessVariables(variableValues: VariableValues, argTypes: ArgTypeMa
     if (argTypes[argName] === 'PX_STRING_LIST') {
       const elms = argVal.toString().split(',');
       const listJoined = elms.map((elm) => `'${elm}'`).join(',');
+      // noinspection UnnecessaryLocalVariableJS
       const listRepr = `[${listJoined}]\n`;
       processedVariables[argName] = listRepr;
       break;
@@ -158,7 +163,8 @@ function preprocessVariables(variableValues: VariableValues, argTypes: ArgTypeMa
 
 // This should only be called by table grpc client, and it will reject the returned promise
 // when executeScript() is called with an invalid Vis spec or if that spec is violated.
-export function getQueryFuncs(vis: Vis, variableValues: VariableValues): VizierQueryFunc[] {
+export function getQueryFuncs(vis: Vis, variableValues: VariableValues,
+  selectedWidget: string | null): VizierQueryFunc[] {
   const defaults = {};
   if (!vis) {
     return [];
@@ -186,7 +192,7 @@ export function getQueryFuncs(vis: Vis, variableValues: VariableValues): VizierQ
     ...defaults,
     ...variableValues,
   };
-  const argTypes = getArgTypesForVis(vis);
+  const argTypes = argTypesForVis(vis);
   const valsOrDefaults = preprocessVariables(unprocessedValsOrDefaults, argTypes);
 
   let visGlobalFuncs = vis.globalFuncs;
@@ -194,23 +200,44 @@ export function getQueryFuncs(vis: Vis, variableValues: VariableValues): VizierQ
     visGlobalFuncs = [];
   }
 
-  const globalFuncs = visGlobalFuncs.map((globalFunc) => ({
+  // We filter out widgets that don't have function definitions.
+  let selectedWidgetGlobalFunc;
+  const widgetFuncs = vis.widgets.filter((widget) => {
+    // When we are in widget selection mode, only select the particular widget.
+    if (selectedWidget) {
+      if (widget.name !== selectedWidget) {
+        return false;
+      }
+      // If the selected widget is using a global func, make sure we pick that func later.
+      if (widget.globalFuncOutputName != null) {
+        selectedWidgetGlobalFunc = widget.globalFuncOutputName;
+      }
+      return widget.func != null;
+    }
+    return widget.func;
+  }).map((widget, i) => ({
+    name: widget.func.name,
+    outputTablePrefix: widgetTableName(widget, i),
+    args: getFuncArgs(valsOrDefaults, widget.func),
+  }));
+
+  const globalFuncs = visGlobalFuncs.filter((globalFunc) => {
+    if (selectedWidget) {
+      return globalFunc.outputName === selectedWidgetGlobalFunc;
+    }
+    return true;
+  }).map((globalFunc) => ({
     name: globalFunc.func.name,
     // There shouldn't be any confusion over this name, outputName is a required field
     // and should be validated before reaching this point.
     outputTablePrefix: globalFunc.outputName,
     args: getFuncArgs(valsOrDefaults, globalFunc.func),
   }));
-  // We filter out widgets that don't have function definitions.
-  const widgetFuncs = vis.widgets.filter((widget) => widget.func).map((widget, i) => ({
-    name: widget.func.name,
-    outputTablePrefix: widgetTableName(widget, i),
-    args: getFuncArgs(valsOrDefaults, widget.func),
-  }));
+
   return globalFuncs.concat(widgetFuncs);
 }
 
-export function toJSON(vis: Vis) {
+export function toJSON(vis: Vis): string {
   return JSON.stringify(vis, null, 2);
 }
 
@@ -243,7 +270,7 @@ export function validateVis(vis: Vis, variableValues: VariableValues): VizierQue
   // TODO(philkuz) wondering if I should keep this or remove it because we typically call this afterwards.
   // Alternatively, we could have getQueryFuncs call the above.
   try {
-    getQueryFuncs(vis, variableValues);
+    getQueryFuncs(vis, variableValues, null);
   } catch (error) {
     errors.push(error as VizierQueryError);
   }

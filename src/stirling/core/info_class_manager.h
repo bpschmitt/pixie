@@ -28,8 +28,9 @@
 #include "src/common/base/base.h"
 #include "src/shared/types/type_utils.h"
 #include "src/shared/types/typespb/wrapper/types_pb_wrapper.h"
+#include "src/stirling/core/data_table.h"
+#include "src/stirling/core/frequency_manager.h"
 #include "src/stirling/core/types.h"
-#include "src/stirling/core/utils.h"
 #include "src/stirling/proto/stirling.pb.h"
 
 namespace px {
@@ -62,30 +63,15 @@ class InfoClassManager final : public NotCopyable {
    * This is required to identify an InfoClassManager parent source and also to generate
    * the publish proto.
    */
-  explicit InfoClassManager(const DataTableSchema& schema,
-                            stirlingpb::SourceType type = stirlingpb::STATIC)
-      : type_(type), schema_(schema) {
-    id_ = global_id_++;
-    sample_push_freq_mgr_.set_sampling_period(schema.default_sampling_period());
-    sample_push_freq_mgr_.set_push_period(schema.default_push_period());
-  }
+  explicit InfoClassManager(const DataTableSchema& schema)
+      : id_(global_id_++), schema_(schema), data_table_(new DataTable(id_, schema_)) {}
 
   /**
    * @brief Source connector connected to this Info Class.
    *
    * @param source Pointer to source connector instance.
    */
-  void SetSourceConnector(SourceConnector* source, uint32_t table_num) {
-    source_ = source;
-    source_table_num_ = table_num;
-  }
-
-  /**
-   * Data table connected to this Info Class.
-   *
-   * @param Pointer to data table instance.
-   */
-  void SetDataTable(DataTable* data_table) { data_table_ = data_table; }
+  void SetSourceConnector(SourceConnector* source) { source_ = source; }
 
   /**
    * Get the schema of the InfoClass.
@@ -113,51 +99,9 @@ class InfoClassManager final : public NotCopyable {
   stirlingpb::InfoClass ToProto() const;
 
   /**
-   * Configure sampling period.
-   *
-   * @param period Sampling period in ms.
-   */
-  void SetSamplingPeriod(std::chrono::milliseconds period) {
-    sample_push_freq_mgr_.set_sampling_period(period);
-  }
-
-  /**
-   * Configure sampling period.
-   *
-   * @param period Sampling period in ms.
-   */
-  void SetPushPeriod(std::chrono::milliseconds period) {
-    sample_push_freq_mgr_.set_push_period(period);
-  }
-
-  /**
-   * Returns true if sampling is required, for whatever reason (elapsed time, etc.).
-   *
-   * @return bool
-   */
-  bool SamplingRequired() const;
-
-  /**
-   * Returns true if a data push is required, for whatever reason (elapsed time, occupancy, etc.).
-   *
-   * @return bool
-   */
-  bool PushRequired() const;
-
-  /**
    * Set initial context. Meant to be run once as an initialization step.
    */
   void InitContext(ConnectorContext* ctx);
-
-  /**
-   * Samples the data from the Source and copies into local buffers.
-   */
-  void SampleData(ConnectorContext* ctx);
-
-  /**
-   * Push data by using the callback.
-   */
-  void PushData(DataPushCallback agent_callback);
 
   /**
    * Notify function to update state after making changes to the schema.
@@ -165,62 +109,25 @@ class InfoClassManager final : public NotCopyable {
    */
   void Notify() {}
 
-  /**
-   * Returns the next time the source needs to be sampled, according to the sampling period.
-   *
-   * @return std::chrono::milliseconds
-   */
-  std::chrono::steady_clock::time_point NextSamplingTime() const {
-    return sample_push_freq_mgr_.NextSamplingTime();
-  }
-
-  /**
-   * Returns the next time the data table needs to be pushed upstream, according to the push period.
-   *
-   * @return std::chrono::milliseconds
-   */
-  std::chrono::steady_clock::time_point NextPushTime() const {
-    return sample_push_freq_mgr_.NextPushTime();
-  }
-
-  /**
-   * Set the Subscription for the InfoClass.
-   *
-   * @param subscription
-   */
-  void SetSubscription(bool subscribed) { subscribed_ = subscribed; }
-
   std::string_view name() const { return schema_.name(); }
   const SourceConnector* source() const { return source_; }
   uint64_t id() const { return id_; }
-  bool subscribed() const { return subscribed_; }
-  uint32_t source_table_num() const { return source_table_num_; }
-  DataTable* data_table() const { return data_table_; }
+  DataTable* data_table() const { return data_table_.get(); }
 
  private:
   inline static std::atomic<uint64_t> global_id_ = 0;
 
-  stirlingpb::SourceType type_;
-
   // Unique ID of the InfoClassManager instance. ID must never repeat, even after destruction.
-  uint64_t id_;
+  const uint64_t id_;
 
   // The schema of table associated with this Info Class manager.
   const DataTableSchema& schema_;
 
-  // Boolean indicating whether an agent has subscribed to the Info Class.
-  bool subscribed_ = false;
-
   // Pointer back to the source connector providing the data.
   SourceConnector* source_ = nullptr;
 
-  // Table number within source connector for this info class.
-  uint32_t source_table_num_;
-
   // Pointer to the data table where the data is stored.
-  DataTable* data_table_ = nullptr;
-
-  SamplePushFrequencyManager sample_push_freq_mgr_;
+  std::unique_ptr<DataTable> data_table_;
 };
 
 using InfoClassManagerVec = std::vector<std::unique_ptr<InfoClassManager>>;

@@ -21,8 +21,8 @@ import * as React from 'react';
 import Link from '@material-ui/core/Link';
 import { makeStyles, Theme } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
-import { VizierQueryError } from '@pixie-labs/api';
-import { CONTACT_ENABLED } from 'containers/constants';
+import { VizierQueryError } from 'app/api';
+import { CONTACT_ENABLED } from 'app/containers/constants';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
   errorRow: {
@@ -36,12 +36,11 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   },
 }));
 
-export const VizierErrorDetails = (props: { error: Error }) => {
-  const { error } = props;
+export const VizierErrorDetails: React.FC<{ error: Error }> = ({ error }) => {
   const classes = useStyles();
   const { details } = error as VizierQueryError;
 
-  let errorDetails = null;
+  let errorDetails: JSX.Element;
 
   if (typeof details === 'string') {
     errorDetails = <div className={classes.errorRow}>{details}</div>;

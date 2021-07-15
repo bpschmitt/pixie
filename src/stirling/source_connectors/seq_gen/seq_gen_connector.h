@@ -71,9 +71,9 @@ class SeqGenConnector : public SourceConnector {
        types::PatternType::GENERAL},
   };
   // clang-format on
-  static constexpr auto kSeq0Table = DataTableSchema(
-      "sequence_generator0", "A table of predictable sequences for testing purposes", kElementsSeq0,
-      std::chrono::milliseconds{500}, std::chrono::milliseconds{1000});
+  static constexpr auto kSeq0Table =
+      DataTableSchema("sequence_generator0",
+                      "A table of predictable sequences for testing purposes", kElementsSeq0);
 
   // clang-format off
   static constexpr DataElement kElementsSeq1[] = {
@@ -97,8 +97,7 @@ class SeqGenConnector : public SourceConnector {
   static constexpr std::string_view kSeq1TabletizationKey = "xmod8";
   static constexpr auto kSeq1Table = DataTableSchema(
       "sequence_generator1", "A tabletized table of predictable sequences for testing purposes",
-      kElementsSeq1, kSeq1TabletizationKey, std::chrono::milliseconds{500},
-      std::chrono::milliseconds{1000});
+      kElementsSeq1, kSeq1TabletizationKey);
 
   static constexpr auto kTables = MakeArray(kSeq0Table, kSeq1Table);
   static constexpr uint32_t kSeq0TableNum = SourceConnector::TableNum(kTables, kSeq0Table);
@@ -129,17 +128,8 @@ class SeqGenConnector : public SourceConnector {
         rng_(37) {}
   ~SeqGenConnector() override = default;
 
-  Status InitImpl() override {
-    sample_push_freq_mgr_.set_sampling_period(kSamplingPeriod);
-    sample_push_freq_mgr_.set_push_period(kPushPeriod);
-    return Status::OK();
-  }
+  Status InitImpl() override;
 
-  void TransferDataImpl(ConnectorContext* /*ctx*/, uint32_t /*table_num*/,
-                        DataTable* /*data_table*/) override {
-    DCHECK(false) << "Deprecated, do not use";
-  }
-  bool output_multi_tables() const override { return true; }
   void TransferDataImpl(ConnectorContext* ctx, const std::vector<DataTable*>& data_tables) override;
 
   Status StopImpl() override { return Status::OK(); }

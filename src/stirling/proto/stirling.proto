@@ -50,24 +50,15 @@ message TableSchema {
   uint64 tabletization_key = 4;
 }
 
-enum SourceType {
-  STATIC = 0;
-  DYNAMIC = 1;
-}
-
 // InfoClass stores a set of Elements that share common timestamps (i.e., they are
 // typically collected together). For example, cpu_usage which could comprise of
 // Elements such as user%, system%, io%, that are collected together in the same
 // BPF program.
 message InfoClass {
-  SourceType type = 1;
   // Unique identifier of the info class; used for Stirling to PEM communications.
   // This id is assigned by the data collector's config block when creating a Publish message.
   uint64 id = 2;
   TableSchema schema = 3;
-  bool subscribed = 4;
-  uint32 sampling_period_millis = 5;
-  uint32 push_period_millis = 6;
 }
 
 // Publish message contains information on
@@ -77,13 +68,4 @@ message InfoClass {
 // data is being collected.
 message Publish {
   repeated InfoClass published_info_classes = 1;
-}
-
-// Subscribe message is sent by an agent in response to
-// a Publish message from the Data Collector,
-// An agent updates the ElementState in each Element of an
-// InfoClass so that the Data Collector is aware of
-// the data that the Agent wants.
-message Subscribe {
-  repeated InfoClass subscribed_info_classes = 1;
 }

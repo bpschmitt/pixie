@@ -37,8 +37,11 @@ include_recipe 'pixielabs::golang'
 
 execute 'install node packages' do
   command %(/opt/node/bin/npm install -g \
-            tslint@5.11.0 typescript@3.0.1 yarn@1.22.4 webpack@4.42.0 \
-            jshint@2.11.0 jest@23.4.2 @sourcegraph/lsif-tsc@0.6.8)
+            jshint@2.11.0 yarn@1.22.4 @sourcegraph/lsif-tsc@0.6.8 protobufjs@6.11.2)
+end
+
+execute 'install pbjs/pbts deps' do
+  command '/opt/node/bin/pbjs || true'
 end
 
 directory '/opt/pixielabs' do
@@ -53,6 +56,24 @@ directory '/opt/pixielabs/bin' do
   group root_group
   mode '0755'
   action :create
+end
+
+directory '/opt/pixielabs/gopath' do
+  owner user
+  group root_group
+  mode '0755'
+  action :create
+end
+
+execute 'install go binaries' do
+  ENV['GOPATH'] = "/opt/pixielabs/gopath"
+  command %(go get \
+            golang.org/x/lint/golint@v0.0.0-20210508222113-6edffad5e616 \
+            golang.org/x/tools/cmd/goimports@v0.1.2 \
+            github.com/golang/mock/mockgen@v1.5.0 \
+            github.com/cheekybits/genny@v1.0.0 \
+            sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1 \
+            github.com/go-bindata/go-bindata/go-bindata@v3.1.2+incompatible)
 end
 
 template '/opt/pixielabs/plenv.inc' do
@@ -102,7 +123,6 @@ end
 file '/tmp/shellcheck.tar.xz' do
   action :delete
 end
-
 
 remote_file '/opt/pixielabs/bin/prototool' do
   source node['prototool']['download_path']
@@ -170,7 +190,6 @@ file '/tmp/helm.tar.gz' do
   action :delete
 end
 
-
 directory '/opt/antlr' do
   owner user
   group root_group
@@ -182,4 +201,16 @@ remote_file '/opt/antlr/antlr-4.9-complete.jar' do
   source node['antlr']['download_path']
   mode 0644
   checksum node['antlr']['sha256']
+end
+
+remote_file '/opt/pixielabs/bin/opm' do
+  source node['opm']['download_path']
+  mode 0755
+  checksum node['opm']['sha256']
+end
+
+remote_file '/opt/pixielabs/bin/faq' do
+  source node['faq']['download_path']
+  mode 0755
+  checksum node['faq']['sha256']
 end

@@ -29,8 +29,8 @@ namespace stirling {
 // once the ebpf version is available.
 // Using data from /proc/stat
 Status ProcStatConnector::InitImpl() {
-  sample_push_freq_mgr_.set_sampling_period(kSamplingPeriod);
-  sample_push_freq_mgr_.set_push_period(kPushPeriod);
+  sampling_freq_mgr_.set_period(kSamplingPeriod);
+  push_freq_mgr_.set_period(kPushPeriod);
 
   std::ifstream input_file(kProcStatFileName);
   if (!input_file.good()) {
@@ -102,10 +102,14 @@ Status ProcStatConnector::GetProcStat(const std::vector<std::string>& parsed_str
   return Status::OK();
 }
 
-void ProcStatConnector::TransferDataImpl(ConnectorContext* /* ctx */, uint32_t table_num,
-                                         DataTable* data_table) {
-  DCHECK_LT(table_num, num_tables())
-      << absl::Substitute("Trying to access unexpected table: table_num=$0", table_num);
+void ProcStatConnector::TransferDataImpl(ConnectorContext* /*ctx*/,
+                                         const std::vector<DataTable*>& data_tables) {
+  DCHECK_EQ(data_tables.size(), 1);
+  auto* data_table = data_tables[0];
+
+  if (data_table == nullptr) {
+    return;
+  }
 
   auto parsed_str = GetProcParams();
   ECHECK(GetProcStat(parsed_str).ok());
@@ -115,18 +119,6 @@ void ProcStatConnector::TransferDataImpl(ConnectorContext* /* ctx */, uint32_t t
   r.Append<r.ColIndex("system_percent")>(cpu_usage_.system_percent);
   r.Append<r.ColIndex("user_percent")>(cpu_usage_.user_percent);
   r.Append<r.ColIndex("idle_percent")>(cpu_usage_.idle_percent);
-}
-
-void ProcStatConnector::TransferDataImpl(ConnectorContext* ctx,
-                                         const std::vector<DataTable*>& data_tables) {
-  DCHECK_EQ(data_tables.size(), 1);
-  auto* data_table = data_tables[0];
-
-  if (data_table == nullptr) {
-    return;
-  }
-
-  TransferDataImpl(ctx, /*table_num*/ 0, data_table);
 }
 
 }  // namespace stirling

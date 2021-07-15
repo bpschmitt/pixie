@@ -17,7 +17,7 @@
  */
 
 import * as React from 'react';
-import { PixienautForm, FormStructure } from '@pixie-labs/components';
+import { PixienautForm, FormStructure } from 'app/components';
 import { RouteProps } from 'react-router';
 import * as QueryString from 'query-string';
 import { BasePage } from './base';
@@ -35,7 +35,7 @@ export const PasswordRecoveryPage: React.FC = ({ location }: RouteProps) => {
       setMethod(m);
       setError(null);
     }).catch((e) => setError(e));
-  }, [flow]);
+  }, [authClient, flow]);
 
   return (
     <BasePage>

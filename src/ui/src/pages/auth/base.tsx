@@ -23,9 +23,9 @@ import {
   Theme, WithStyles, withStyles,
 } from '@material-ui/core';
 import { createStyles } from '@material-ui/styles';
-import { AuthFooter } from '@pixie-labs/components';
+import { Footer } from 'app/components';
 import { Copyright } from 'configurable/copyright';
-import * as pixieLogo from '../../../assets/images/pixie-logo.svg';
+import * as pixieLogo from 'assets/images/pixie-logo.svg';
 import * as StarsPNG from './stars.png';
 
 const styles = ({ spacing, breakpoints }: Theme) => createStyles({
@@ -81,6 +81,6 @@ export const BasePage = withStyles(styles)(({ children, classes }: BasePageProps
     <div className={classes.content}>
       {children}
     </div>
-    <AuthFooter copyright={Copyright} />
+    <Footer copyright={Copyright} />
   </div>
 ));

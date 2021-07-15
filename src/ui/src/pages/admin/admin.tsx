@@ -16,7 +16,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { scrollbarStyles } from '@pixie-labs/components';
+import { scrollbarStyles, Footer } from 'app/components';
+import { Copyright } from 'configurable/copyright';
 import {
   Theme,
   makeStyles,
@@ -25,11 +26,11 @@ import { createStyles } from '@material-ui/styles';
 
 import * as React from 'react';
 import { Route, Switch, Redirect } from 'react-router-dom';
-import { LiveViewButton } from 'containers/admin/utils';
-import { AdminOverview } from 'containers/admin/admin-overview';
-import { ClusterDetails } from 'containers/admin/cluster-details';
-import NavBars from 'containers/App/nav-bars';
-import { SidebarContext } from 'context/sidebar-context';
+import { LiveViewButton } from 'app/containers/admin/utils';
+import { AdminOverview } from 'app/containers/admin/admin-overview';
+import { ClusterDetails } from 'app/containers/admin/cluster-details';
+import NavBars from 'app/containers/App/nav-bars';
+import { SidebarContext } from 'app/context/sidebar-context';
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
   root: {
@@ -43,17 +44,30 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
   title: {
     flexGrow: 1,
     marginLeft: theme.spacing(2),
+    height: '100%',
   },
   main: {
     marginLeft: theme.spacing(6),
     flex: 1,
     minHeight: 0,
     padding: theme.spacing(1),
+    display: 'flex',
+    flexFlow: 'column nowrap',
+    overflow: 'auto',
+  },
+  mainBlock: {
+    flex: '1 0 auto',
+  },
+  mainFooter: {
+    flex: '0 0 auto',
   },
   titleText: {
     ...theme.typography.h6,
     color: theme.palette.foreground.grey5,
     fontWeight: theme.typography.fontWeightBold,
+    display: 'flex',
+    alignItems: 'center',
+    height: '100%',
   },
 }));
 
@@ -70,7 +84,12 @@ export const AdminPage: React.FC = ({ children }) => {
         </NavBars>
       </SidebarContext.Provider>
       <div className={classes.main}>
-        { children }
+        <div className={classes.mainBlock}>
+          { children }
+        </div>
+        <div className={classes.mainFooter}>
+          <Footer copyright={Copyright} />
+        </div>
       </div>
     </div>
   );

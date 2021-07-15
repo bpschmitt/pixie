@@ -16,13 +16,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DOMAIN_NAME } from 'containers/constants';
+import { DOMAIN_NAME } from 'app/containers/constants';
 
 interface StringMap {
   [s: string]: string;
 }
 
-export function getRedirectPath(path: string, params: StringMap) {
+export function getRedirectPath(path: string, params: StringMap): string {
   const port = window.location.port ? `:${window.location.port}` : '';
   let queryParams = '';
 
@@ -35,6 +35,6 @@ export function getRedirectPath(path: string, params: StringMap) {
   return `${window.location.protocol}//${DOMAIN_NAME}${port}${path}${queryParams}`;
 }
 
-export function redirect(path: string, params: StringMap) {
+export function redirect(path: string, params: StringMap): void {
   window.location.href = getRedirectPath(path, params);
 }

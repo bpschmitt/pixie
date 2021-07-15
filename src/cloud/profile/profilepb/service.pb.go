@@ -32,14 +32,16 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type UserInfo struct {
-	ID             *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	OrgID          *uuidpb.UUID `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	Username       string       `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
-	FirstName      string       `protobuf:"bytes,4,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
-	LastName       string       `protobuf:"bytes,5,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
-	Email          string       `protobuf:"bytes,6,opt,name=email,proto3" json:"email,omitempty"`
-	ProfilePicture string       `protobuf:"bytes,7,opt,name=profile_picture,json=profilePicture,proto3" json:"profile_picture,omitempty"`
-	IsApproved     bool         `protobuf:"varint,8,opt,name=is_approved,json=isApproved,proto3" json:"is_approved,omitempty"`
+	ID               *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	OrgID            *uuidpb.UUID `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	Username         string       `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
+	FirstName        string       `protobuf:"bytes,4,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName         string       `protobuf:"bytes,5,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	Email            string       `protobuf:"bytes,6,opt,name=email,proto3" json:"email,omitempty"`
+	ProfilePicture   string       `protobuf:"bytes,7,opt,name=profile_picture,json=profilePicture,proto3" json:"profile_picture,omitempty"`
+	IsApproved       bool         `protobuf:"varint,8,opt,name=is_approved,json=isApproved,proto3" json:"is_approved,omitempty"`
+	IdentityProvider string       `protobuf:"bytes,9,opt,name=identity_provider,json=identityProvider,proto3" json:"identity_provider,omitempty"`
+	AuthProviderID   string       `protobuf:"bytes,10,opt,name=auth_provider_id,json=authProviderId,proto3" json:"auth_provider_id,omitempty"`
 }
 
 func (m *UserInfo) Reset()      { *m = UserInfo{} }
@@ -130,6 +132,20 @@ func (m *UserInfo) GetIsApproved() bool {
 	return false
 }
 
+func (m *UserInfo) GetIdentityProvider() string {
+	if m != nil {
+		return m.IdentityProvider
+	}
+	return ""
+}
+
+func (m *UserInfo) GetAuthProviderID() string {
+	if m != nil {
+		return m.AuthProviderID
+	}
+	return ""
+}
+
 type GetUserByEmailRequest struct {
 	Email string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 }
@@ -173,6 +189,49 @@ func (m *GetUserByEmailRequest) GetEmail() string {
 	return ""
 }
 
+type GetUserByAuthProviderIDRequest struct {
+	AuthProviderID string `protobuf:"bytes,1,opt,name=auth_provider_id,json=authProviderId,proto3" json:"auth_provider_id,omitempty"`
+}
+
+func (m *GetUserByAuthProviderIDRequest) Reset()      { *m = GetUserByAuthProviderIDRequest{} }
+func (*GetUserByAuthProviderIDRequest) ProtoMessage() {}
+func (*GetUserByAuthProviderIDRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7b1fc6e171c8059b, []int{2}
+}
+func (m *GetUserByAuthProviderIDRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *GetUserByAuthProviderIDRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_GetUserByAuthProviderIDRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *GetUserByAuthProviderIDRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetUserByAuthProviderIDRequest.Merge(m, src)
+}
+func (m *GetUserByAuthProviderIDRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *GetUserByAuthProviderIDRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetUserByAuthProviderIDRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetUserByAuthProviderIDRequest proto.InternalMessageInfo
+
+func (m *GetUserByAuthProviderIDRequest) GetAuthProviderID() string {
+	if m != nil {
+		return m.AuthProviderID
+	}
+	return ""
+}
+
 type OrgInfo struct {
 	ID              *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	OrgName         string       `protobuf:"bytes,2,opt,name=org_name,json=orgName,proto3" json:"org_name,omitempty"`
@@ -183,7 +242,7 @@ type OrgInfo struct {
 func (m *OrgInfo) Reset()      { *m = OrgInfo{} }
 func (*OrgInfo) ProtoMessage() {}
 func (*OrgInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{2}
+	return fileDescriptor_7b1fc6e171c8059b, []int{3}
 }
 func (m *OrgInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -241,17 +300,19 @@ func (m *OrgInfo) GetEnableApprovals() bool {
 }
 
 type CreateUserRequest struct {
-	OrgID     *uuidpb.UUID `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	Username  string       `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
-	FirstName string       `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
-	LastName  string       `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
-	Email     string       `protobuf:"bytes,5,opt,name=email,proto3" json:"email,omitempty"`
+	OrgID            *uuidpb.UUID `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	Username         string       `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	FirstName        string       `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName         string       `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	Email            string       `protobuf:"bytes,5,opt,name=email,proto3" json:"email,omitempty"`
+	IdentityProvider string       `protobuf:"bytes,6,opt,name=identity_provider,json=identityProvider,proto3" json:"identity_provider,omitempty"`
+	AuthProviderID   string       `protobuf:"bytes,7,opt,name=auth_provider_id,json=authProviderId,proto3" json:"auth_provider_id,omitempty"`
 }
 
 func (m *CreateUserRequest) Reset()      { *m = CreateUserRequest{} }
 func (*CreateUserRequest) ProtoMessage() {}
 func (*CreateUserRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{3}
+	return fileDescriptor_7b1fc6e171c8059b, []int{4}
 }
 func (m *CreateUserRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -315,6 +376,20 @@ func (m *CreateUserRequest) GetEmail() string {
 	return ""
 }
 
+func (m *CreateUserRequest) GetIdentityProvider() string {
+	if m != nil {
+		return m.IdentityProvider
+	}
+	return ""
+}
+
+func (m *CreateUserRequest) GetAuthProviderID() string {
+	if m != nil {
+		return m.AuthProviderID
+	}
+	return ""
+}
+
 type CreateOrgAndUserRequest struct {
 	Org  *CreateOrgAndUserRequest_Org  `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
 	User *CreateOrgAndUserRequest_User `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
@@ -323,7 +398,7 @@ type CreateOrgAndUserRequest struct {
 func (m *CreateOrgAndUserRequest) Reset()      { *m = CreateOrgAndUserRequest{} }
 func (*CreateOrgAndUserRequest) ProtoMessage() {}
 func (*CreateOrgAndUserRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{4}
+	return fileDescriptor_7b1fc6e171c8059b, []int{5}
 }
 func (m *CreateOrgAndUserRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -374,7 +449,7 @@ type CreateOrgAndUserRequest_Org struct {
 func (m *CreateOrgAndUserRequest_Org) Reset()      { *m = CreateOrgAndUserRequest_Org{} }
 func (*CreateOrgAndUserRequest_Org) ProtoMessage() {}
 func (*CreateOrgAndUserRequest_Org) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{4, 0}
+	return fileDescriptor_7b1fc6e171c8059b, []int{5, 0}
 }
 func (m *CreateOrgAndUserRequest_Org) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -418,16 +493,18 @@ func (m *CreateOrgAndUserRequest_Org) GetDomainName() string {
 }
 
 type CreateOrgAndUserRequest_User struct {
-	Username  string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
-	FirstName string `protobuf:"bytes,2,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
-	LastName  string `protobuf:"bytes,3,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
-	Email     string `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
+	Username         string `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	FirstName        string `protobuf:"bytes,2,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName         string `protobuf:"bytes,3,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	Email            string `protobuf:"bytes,4,opt,name=email,proto3" json:"email,omitempty"`
+	IdentityProvider string `protobuf:"bytes,5,opt,name=identity_provider,json=identityProvider,proto3" json:"identity_provider,omitempty"`
+	AuthProviderID   string `protobuf:"bytes,6,opt,name=auth_provider_id,json=authProviderId,proto3" json:"auth_provider_id,omitempty"`
 }
 
 func (m *CreateOrgAndUserRequest_User) Reset()      { *m = CreateOrgAndUserRequest_User{} }
 func (*CreateOrgAndUserRequest_User) ProtoMessage() {}
 func (*CreateOrgAndUserRequest_User) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{4, 1}
+	return fileDescriptor_7b1fc6e171c8059b, []int{5, 1}
 }
 func (m *CreateOrgAndUserRequest_User) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -484,6 +561,20 @@ func (m *CreateOrgAndUserRequest_User) GetEmail() string {
 	return ""
 }
 
+func (m *CreateOrgAndUserRequest_User) GetIdentityProvider() string {
+	if m != nil {
+		return m.IdentityProvider
+	}
+	return ""
+}
+
+func (m *CreateOrgAndUserRequest_User) GetAuthProviderID() string {
+	if m != nil {
+		return m.AuthProviderID
+	}
+	return ""
+}
+
 type CreateOrgAndUserResponse struct {
 	OrgID  *uuidpb.UUID `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	UserID *uuidpb.UUID `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -492,7 +583,7 @@ type CreateOrgAndUserResponse struct {
 func (m *CreateOrgAndUserResponse) Reset()      { *m = CreateOrgAndUserResponse{} }
 func (*CreateOrgAndUserResponse) ProtoMessage() {}
 func (*CreateOrgAndUserResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{5}
+	return fileDescriptor_7b1fc6e171c8059b, []int{6}
 }
 func (m *CreateOrgAndUserResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -542,7 +633,7 @@ type GetOrgByDomainRequest struct {
 func (m *GetOrgByDomainRequest) Reset()      { *m = GetOrgByDomainRequest{} }
 func (*GetOrgByDomainRequest) ProtoMessage() {}
 func (*GetOrgByDomainRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{6}
+	return fileDescriptor_7b1fc6e171c8059b, []int{7}
 }
 func (m *GetOrgByDomainRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -584,7 +675,7 @@ type GetOrgsRequest struct {
 func (m *GetOrgsRequest) Reset()      { *m = GetOrgsRequest{} }
 func (*GetOrgsRequest) ProtoMessage() {}
 func (*GetOrgsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{7}
+	return fileDescriptor_7b1fc6e171c8059b, []int{8}
 }
 func (m *GetOrgsRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -620,7 +711,7 @@ type GetOrgsResponse struct {
 func (m *GetOrgsResponse) Reset()      { *m = GetOrgsResponse{} }
 func (*GetOrgsResponse) ProtoMessage() {}
 func (*GetOrgsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{8}
+	return fileDescriptor_7b1fc6e171c8059b, []int{9}
 }
 func (m *GetOrgsResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -665,7 +756,7 @@ type UpdateUserRequest struct {
 func (m *UpdateUserRequest) Reset()      { *m = UpdateUserRequest{} }
 func (*UpdateUserRequest) ProtoMessage() {}
 func (*UpdateUserRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{9}
+	return fileDescriptor_7b1fc6e171c8059b, []int{10}
 }
 func (m *UpdateUserRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -723,7 +814,7 @@ type UpdateOrgRequest struct {
 func (m *UpdateOrgRequest) Reset()      { *m = UpdateOrgRequest{} }
 func (*UpdateOrgRequest) ProtoMessage() {}
 func (*UpdateOrgRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{10}
+	return fileDescriptor_7b1fc6e171c8059b, []int{11}
 }
 func (m *UpdateOrgRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -767,14 +858,13 @@ func (m *UpdateOrgRequest) GetEnableApprovals() *types.BoolValue {
 }
 
 type GetUserSettingsRequest struct {
-	ID   *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Keys []string     `protobuf:"bytes,2,rep,name=keys,proto3" json:"keys,omitempty"`
+	ID *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (m *GetUserSettingsRequest) Reset()      { *m = GetUserSettingsRequest{} }
 func (*GetUserSettingsRequest) ProtoMessage() {}
 func (*GetUserSettingsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{11}
+	return fileDescriptor_7b1fc6e171c8059b, []int{12}
 }
 func (m *GetUserSettingsRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -810,22 +900,14 @@ func (m *GetUserSettingsRequest) GetID() *uuidpb.UUID {
 	return nil
 }
 
-func (m *GetUserSettingsRequest) GetKeys() []string {
-	if m != nil {
-		return m.Keys
-	}
-	return nil
-}
-
 type GetUserSettingsResponse struct {
-	Keys   []string `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
-	Values []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
+	AnalyticsOptout bool `protobuf:"varint,3,opt,name=analytics_optout,json=analyticsOptout,proto3" json:"analytics_optout,omitempty"`
 }
 
 func (m *GetUserSettingsResponse) Reset()      { *m = GetUserSettingsResponse{} }
 func (*GetUserSettingsResponse) ProtoMessage() {}
 func (*GetUserSettingsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{12}
+	return fileDescriptor_7b1fc6e171c8059b, []int{13}
 }
 func (m *GetUserSettingsResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -854,30 +936,22 @@ func (m *GetUserSettingsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_GetUserSettingsResponse proto.InternalMessageInfo
 
-func (m *GetUserSettingsResponse) GetKeys() []string {
+func (m *GetUserSettingsResponse) GetAnalyticsOptout() bool {
 	if m != nil {
-		return m.Keys
+		return m.AnalyticsOptout
 	}
-	return nil
-}
-
-func (m *GetUserSettingsResponse) GetValues() []string {
-	if m != nil {
-		return m.Values
-	}
-	return nil
+	return false
 }
 
 type UpdateUserSettingsRequest struct {
-	ID     *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Keys   []string     `protobuf:"bytes,2,rep,name=keys,proto3" json:"keys,omitempty"`
-	Values []string     `protobuf:"bytes,3,rep,name=values,proto3" json:"values,omitempty"`
+	ID              *uuidpb.UUID     `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AnalyticsOptout *types.BoolValue `protobuf:"bytes,4,opt,name=analytics_optout,json=analyticsOptout,proto3" json:"analytics_optout,omitempty"`
 }
 
 func (m *UpdateUserSettingsRequest) Reset()      { *m = UpdateUserSettingsRequest{} }
 func (*UpdateUserSettingsRequest) ProtoMessage() {}
 func (*UpdateUserSettingsRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{13}
+	return fileDescriptor_7b1fc6e171c8059b, []int{14}
 }
 func (m *UpdateUserSettingsRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -913,16 +987,9 @@ func (m *UpdateUserSettingsRequest) GetID() *uuidpb.UUID {
 	return nil
 }
 
-func (m *UpdateUserSettingsRequest) GetKeys() []string {
+func (m *UpdateUserSettingsRequest) GetAnalyticsOptout() *types.BoolValue {
 	if m != nil {
-		return m.Keys
-	}
-	return nil
-}
-
-func (m *UpdateUserSettingsRequest) GetValues() []string {
-	if m != nil {
-		return m.Values
+		return m.AnalyticsOptout
 	}
 	return nil
 }
@@ -934,7 +1001,7 @@ type UpdateUserSettingsResponse struct {
 func (m *UpdateUserSettingsResponse) Reset()      { *m = UpdateUserSettingsResponse{} }
 func (*UpdateUserSettingsResponse) ProtoMessage() {}
 func (*UpdateUserSettingsResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{14}
+	return fileDescriptor_7b1fc6e171c8059b, []int{15}
 }
 func (m *UpdateUserSettingsResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -970,18 +1037,191 @@ func (m *UpdateUserSettingsResponse) GetOK() bool {
 	return false
 }
 
+type GetUserAttributesRequest struct {
+	ID *uuidpb.UUID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+}
+
+func (m *GetUserAttributesRequest) Reset()      { *m = GetUserAttributesRequest{} }
+func (*GetUserAttributesRequest) ProtoMessage() {}
+func (*GetUserAttributesRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7b1fc6e171c8059b, []int{16}
+}
+func (m *GetUserAttributesRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *GetUserAttributesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_GetUserAttributesRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *GetUserAttributesRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetUserAttributesRequest.Merge(m, src)
+}
+func (m *GetUserAttributesRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *GetUserAttributesRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetUserAttributesRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetUserAttributesRequest proto.InternalMessageInfo
+
+func (m *GetUserAttributesRequest) GetID() *uuidpb.UUID {
+	if m != nil {
+		return m.ID
+	}
+	return nil
+}
+
+type GetUserAttributesResponse struct {
+	TourSeen bool `protobuf:"varint,1,opt,name=tour_seen,json=tourSeen,proto3" json:"tour_seen,omitempty"`
+}
+
+func (m *GetUserAttributesResponse) Reset()      { *m = GetUserAttributesResponse{} }
+func (*GetUserAttributesResponse) ProtoMessage() {}
+func (*GetUserAttributesResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7b1fc6e171c8059b, []int{17}
+}
+func (m *GetUserAttributesResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *GetUserAttributesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_GetUserAttributesResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *GetUserAttributesResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetUserAttributesResponse.Merge(m, src)
+}
+func (m *GetUserAttributesResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *GetUserAttributesResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetUserAttributesResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GetUserAttributesResponse proto.InternalMessageInfo
+
+func (m *GetUserAttributesResponse) GetTourSeen() bool {
+	if m != nil {
+		return m.TourSeen
+	}
+	return false
+}
+
+type SetUserAttributesRequest struct {
+	ID       *uuidpb.UUID     `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TourSeen *types.BoolValue `protobuf:"bytes,2,opt,name=tour_seen,json=tourSeen,proto3" json:"tour_seen,omitempty"`
+}
+
+func (m *SetUserAttributesRequest) Reset()      { *m = SetUserAttributesRequest{} }
+func (*SetUserAttributesRequest) ProtoMessage() {}
+func (*SetUserAttributesRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7b1fc6e171c8059b, []int{18}
+}
+func (m *SetUserAttributesRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SetUserAttributesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SetUserAttributesRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SetUserAttributesRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SetUserAttributesRequest.Merge(m, src)
+}
+func (m *SetUserAttributesRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *SetUserAttributesRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_SetUserAttributesRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SetUserAttributesRequest proto.InternalMessageInfo
+
+func (m *SetUserAttributesRequest) GetID() *uuidpb.UUID {
+	if m != nil {
+		return m.ID
+	}
+	return nil
+}
+
+func (m *SetUserAttributesRequest) GetTourSeen() *types.BoolValue {
+	if m != nil {
+		return m.TourSeen
+	}
+	return nil
+}
+
+type SetUserAttributesResponse struct {
+}
+
+func (m *SetUserAttributesResponse) Reset()      { *m = SetUserAttributesResponse{} }
+func (*SetUserAttributesResponse) ProtoMessage() {}
+func (*SetUserAttributesResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7b1fc6e171c8059b, []int{19}
+}
+func (m *SetUserAttributesResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SetUserAttributesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SetUserAttributesResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SetUserAttributesResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SetUserAttributesResponse.Merge(m, src)
+}
+func (m *SetUserAttributesResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *SetUserAttributesResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_SetUserAttributesResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SetUserAttributesResponse proto.InternalMessageInfo
+
 type InviteUserRequest struct {
-	Email          string       `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	FirstName      string       `protobuf:"bytes,2,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
-	LastName       string       `protobuf:"bytes,3,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
-	OrgID          *uuidpb.UUID `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	MustCreateUser bool         `protobuf:"varint,5,opt,name=must_create_user,json=mustCreateUser,proto3" json:"must_create_user,omitempty"`
+	Email            string       `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	FirstName        string       `protobuf:"bytes,2,opt,name=first_name,json=firstName,proto3" json:"first_name,omitempty"`
+	LastName         string       `protobuf:"bytes,3,opt,name=last_name,json=lastName,proto3" json:"last_name,omitempty"`
+	OrgID            *uuidpb.UUID `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	MustCreateUser   bool         `protobuf:"varint,5,opt,name=must_create_user,json=mustCreateUser,proto3" json:"must_create_user,omitempty"`
+	IdentityProvider string       `protobuf:"bytes,6,opt,name=identity_provider,json=identityProvider,proto3" json:"identity_provider,omitempty"`
 }
 
 func (m *InviteUserRequest) Reset()      { *m = InviteUserRequest{} }
 func (*InviteUserRequest) ProtoMessage() {}
 func (*InviteUserRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{15}
+	return fileDescriptor_7b1fc6e171c8059b, []int{20}
 }
 func (m *InviteUserRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1045,6 +1285,13 @@ func (m *InviteUserRequest) GetMustCreateUser() bool {
 	return false
 }
 
+func (m *InviteUserRequest) GetIdentityProvider() string {
+	if m != nil {
+		return m.IdentityProvider
+	}
+	return ""
+}
+
 type InviteUserResponse struct {
 	Email      string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	InviteLink string `protobuf:"bytes,2,opt,name=invite_link,json=inviteLink,proto3" json:"invite_link,omitempty"`
@@ -1053,7 +1300,7 @@ type InviteUserResponse struct {
 func (m *InviteUserResponse) Reset()      { *m = InviteUserResponse{} }
 func (*InviteUserResponse) ProtoMessage() {}
 func (*InviteUserResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{16}
+	return fileDescriptor_7b1fc6e171c8059b, []int{21}
 }
 func (m *InviteUserResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1103,7 +1350,7 @@ type GetUsersInOrgRequest struct {
 func (m *GetUsersInOrgRequest) Reset()      { *m = GetUsersInOrgRequest{} }
 func (*GetUsersInOrgRequest) ProtoMessage() {}
 func (*GetUsersInOrgRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{17}
+	return fileDescriptor_7b1fc6e171c8059b, []int{22}
 }
 func (m *GetUsersInOrgRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1146,7 +1393,7 @@ type GetUsersInOrgResponse struct {
 func (m *GetUsersInOrgResponse) Reset()      { *m = GetUsersInOrgResponse{} }
 func (*GetUsersInOrgResponse) ProtoMessage() {}
 func (*GetUsersInOrgResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7b1fc6e171c8059b, []int{18}
+	return fileDescriptor_7b1fc6e171c8059b, []int{23}
 }
 func (m *GetUsersInOrgResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1185,6 +1432,7 @@ func (m *GetUsersInOrgResponse) GetUsers() []*UserInfo {
 func init() {
 	proto.RegisterType((*UserInfo)(nil), "px.services.UserInfo")
 	proto.RegisterType((*GetUserByEmailRequest)(nil), "px.services.GetUserByEmailRequest")
+	proto.RegisterType((*GetUserByAuthProviderIDRequest)(nil), "px.services.GetUserByAuthProviderIDRequest")
 	proto.RegisterType((*OrgInfo)(nil), "px.services.OrgInfo")
 	proto.RegisterType((*CreateUserRequest)(nil), "px.services.CreateUserRequest")
 	proto.RegisterType((*CreateOrgAndUserRequest)(nil), "px.services.CreateOrgAndUserRequest")
@@ -1200,6 +1448,10 @@ func init() {
 	proto.RegisterType((*GetUserSettingsResponse)(nil), "px.services.GetUserSettingsResponse")
 	proto.RegisterType((*UpdateUserSettingsRequest)(nil), "px.services.UpdateUserSettingsRequest")
 	proto.RegisterType((*UpdateUserSettingsResponse)(nil), "px.services.UpdateUserSettingsResponse")
+	proto.RegisterType((*GetUserAttributesRequest)(nil), "px.services.GetUserAttributesRequest")
+	proto.RegisterType((*GetUserAttributesResponse)(nil), "px.services.GetUserAttributesResponse")
+	proto.RegisterType((*SetUserAttributesRequest)(nil), "px.services.SetUserAttributesRequest")
+	proto.RegisterType((*SetUserAttributesResponse)(nil), "px.services.SetUserAttributesResponse")
 	proto.RegisterType((*InviteUserRequest)(nil), "px.services.InviteUserRequest")
 	proto.RegisterType((*InviteUserResponse)(nil), "px.services.InviteUserResponse")
 	proto.RegisterType((*GetUsersInOrgRequest)(nil), "px.services.GetUsersInOrgRequest")
@@ -1211,81 +1463,95 @@ func init() {
 }
 
 var fileDescriptor_7b1fc6e171c8059b = []byte{
-	// 1177 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x57, 0x4f, 0x6f, 0xe3, 0x44,
-	0x14, 0xcf, 0x38, 0xff, 0x5f, 0x45, 0x9b, 0x1d, 0xed, 0x9f, 0xac, 0x77, 0xd7, 0x29, 0x66, 0xa1,
-	0xa9, 0xd0, 0x3a, 0xda, 0xb2, 0x07, 0xc4, 0x6a, 0x05, 0xed, 0xa6, 0x42, 0xd9, 0x02, 0x59, 0xb9,
-	0xea, 0x1e, 0x10, 0x52, 0xe4, 0xc4, 0x53, 0x63, 0x35, 0xf5, 0x98, 0xb1, 0x53, 0xb6, 0x37, 0x04,
-	0x5f, 0x80, 0x2b, 0x17, 0xce, 0x7c, 0x00, 0x3e, 0x01, 0x07, 0xc4, 0x05, 0xa9, 0xc7, 0x3d, 0x55,
-	0x34, 0x95, 0x10, 0xc7, 0xfd, 0x08, 0xc8, 0x33, 0xe3, 0xc4, 0x49, 0x9c, 0xb4, 0x5d, 0x38, 0xc5,
-	0x7e, 0xff, 0xdf, 0xfb, 0xcd, 0xfc, 0x9e, 0x03, 0xeb, 0x01, 0xeb, 0x35, 0x7a, 0x7d, 0x3a, 0xb0,
-	0x1b, 0x3e, 0xa3, 0xfb, 0x6e, 0x9f, 0xc4, 0xbf, 0x7e, 0xb7, 0x11, 0x10, 0x76, 0xe4, 0xf6, 0x88,
-	0xe1, 0x33, 0x1a, 0x52, 0xbc, 0xe4, 0xbf, 0x34, 0xa4, 0x24, 0x50, 0x1f, 0x38, 0x6e, 0xf8, 0xf5,
-	0xa0, 0x6b, 0xf4, 0xe8, 0x61, 0xc3, 0xa1, 0x0e, 0x6d, 0x70, 0x9b, 0xee, 0x60, 0x9f, 0xbf, 0xf1,
-	0x17, 0xfe, 0x24, 0x7c, 0x55, 0xcd, 0xa1, 0xd4, 0x11, 0xb1, 0x85, 0xd5, 0xb7, 0xcc, 0xf2, 0x7d,
-	0xc2, 0x02, 0xa9, 0xaf, 0x45, 0x65, 0x58, 0xbe, 0x2b, 0x0c, 0x1a, 0x83, 0x81, 0x6b, 0xfb, 0x5d,
-	0xfe, 0x23, 0x0c, 0xf4, 0x9f, 0x15, 0x28, 0xed, 0x05, 0x84, 0xb5, 0xbc, 0x7d, 0x8a, 0xd7, 0x40,
-	0x71, 0xed, 0x2a, 0x5a, 0x45, 0xf5, 0xa5, 0x8d, 0x15, 0xc3, 0x7f, 0x69, 0x08, 0x7b, 0x63, 0x6f,
-	0xaf, 0xd5, 0xdc, 0x2a, 0x0c, 0x4f, 0x6b, 0x4a, 0xab, 0x69, 0x2a, 0xae, 0x8d, 0x1f, 0x42, 0x81,
-	0x32, 0xa7, 0xe3, 0xda, 0x55, 0x25, 0xdd, 0xb8, 0x3c, 0x3c, 0xad, 0xe5, 0xdb, 0xcc, 0x69, 0x35,
-	0xcd, 0x3c, 0x65, 0x4e, 0xcb, 0xc6, 0x2a, 0x94, 0x06, 0x01, 0x61, 0x9e, 0x75, 0x48, 0xaa, 0xd9,
-	0x55, 0x54, 0x2f, 0x9b, 0xa3, 0x77, 0x7c, 0x0f, 0x60, 0xdf, 0x65, 0x41, 0xd8, 0xe1, 0xda, 0x1c,
-	0xd7, 0x96, 0xb9, 0xe4, 0x8b, 0x48, 0x7d, 0x07, 0xca, 0x7d, 0x2b, 0xd6, 0xe6, 0x85, 0x6f, 0x24,
-	0xe0, 0xca, 0xeb, 0x90, 0x27, 0x87, 0x96, 0xdb, 0xaf, 0x16, 0xb8, 0x42, 0xbc, 0xe0, 0x35, 0x58,
-	0x91, 0xe3, 0xee, 0xf8, 0x6e, 0x2f, 0x1c, 0x30, 0x52, 0x2d, 0x72, 0xfd, 0xb2, 0x14, 0x3f, 0x17,
-	0x52, 0x5c, 0x83, 0x25, 0x37, 0xe8, 0x58, 0xbe, 0xcf, 0xe8, 0x11, 0xb1, 0xab, 0xa5, 0x55, 0x54,
-	0x2f, 0x99, 0xe0, 0x06, 0x9b, 0x52, 0xa2, 0x3f, 0x80, 0x1b, 0x9f, 0x92, 0x30, 0x1a, 0xd1, 0xd6,
-	0xf1, 0x76, 0x14, 0xdb, 0x24, 0xdf, 0x0c, 0x48, 0x10, 0x8e, 0x13, 0xa3, 0x44, 0x62, 0xfd, 0x27,
-	0x04, 0xc5, 0xa8, 0xef, 0x2b, 0x8d, 0xf3, 0x36, 0x94, 0xa2, 0x71, 0xf2, 0xfe, 0x14, 0x1e, 0xad,
-	0x48, 0x99, 0xc3, 0xdb, 0xab, 0xc1, 0x92, 0x4d, 0x0f, 0x2d, 0xd7, 0xeb, 0x24, 0x26, 0x07, 0x42,
-	0xc4, 0x0d, 0xd6, 0xa1, 0x42, 0x3c, 0xab, 0xdb, 0x27, 0xb2, 0x09, 0xab, 0x1f, 0xf0, 0x09, 0x96,
-	0xcc, 0x15, 0x21, 0xdf, 0x8c, 0xc5, 0xfa, 0xaf, 0x08, 0xae, 0x3d, 0x65, 0xc4, 0x0a, 0x49, 0xd4,
-	0x4e, 0xdc, 0xc7, 0x18, 0x4b, 0xf4, 0x26, 0x58, 0x2a, 0x0b, 0xb1, 0xcc, 0x2e, 0xc4, 0x32, 0x37,
-	0x0f, 0xcb, 0x7c, 0x72, 0xa4, 0x7f, 0x2a, 0x70, 0x4b, 0x94, 0xdd, 0x66, 0xce, 0xa6, 0x67, 0x27,
-	0x8b, 0xff, 0x08, 0xb2, 0x94, 0x39, 0xb2, 0xf2, 0xba, 0x91, 0xb8, 0x49, 0xc6, 0x1c, 0x17, 0xa3,
-	0xcd, 0x1c, 0x33, 0x72, 0xc2, 0x4f, 0x20, 0x17, 0x55, 0x2d, 0x8f, 0xf0, 0xfa, 0xa5, 0x9c, 0xf9,
-	0x33, 0x77, 0x53, 0x37, 0x21, 0xdb, 0x66, 0xce, 0x04, 0x76, 0x68, 0x21, 0x76, 0xca, 0x34, 0x76,
-	0x6a, 0x08, 0xb9, 0x28, 0xe0, 0xc4, 0x3c, 0xd1, 0xc2, 0x79, 0x2a, 0x0b, 0xe7, 0x99, 0x9d, 0x37,
-	0xcf, 0x5c, 0x72, 0x9e, 0x3f, 0x20, 0xa8, 0xce, 0xf6, 0x17, 0xf8, 0xd4, 0x0b, 0xc8, 0x9b, 0x9c,
-	0x86, 0x47, 0x50, 0x8c, 0xaa, 0x5d, 0xc0, 0x06, 0x30, 0x3c, 0xad, 0x15, 0x38, 0xcb, 0x34, 0xcd,
-	0x42, 0x64, 0xdb, 0xb2, 0xf5, 0x0f, 0xf9, 0xbd, 0x6a, 0x33, 0x67, 0xeb, 0xb8, 0xc9, 0x27, 0x12,
-	0x43, 0x3a, 0x35, 0x35, 0x34, 0x3d, 0x35, 0xbd, 0x02, 0xcb, 0xc2, 0x33, 0x90, 0x2e, 0xfa, 0x63,
-	0x58, 0x19, 0x49, 0x64, 0x1f, 0x75, 0xc8, 0x51, 0xe6, 0x04, 0x55, 0xb4, 0x9a, 0xad, 0x2f, 0x6d,
-	0x5c, 0x9f, 0x00, 0x57, 0xde, 0x4f, 0x93, 0x5b, 0xe8, 0xbf, 0x23, 0xb8, 0xb6, 0xe7, 0xdb, 0x53,
-	0xb7, 0xe2, 0xd2, 0x77, 0x77, 0x1b, 0x56, 0x6c, 0x37, 0xf0, 0xfb, 0xd6, 0xf1, 0x88, 0x69, 0xb2,
-	0xdc, 0xeb, 0xae, 0x21, 0xb8, 0xd9, 0x88, 0xb9, 0xd9, 0xd8, 0x0d, 0x99, 0xeb, 0x39, 0x2f, 0xac,
-	0xfe, 0x80, 0x98, 0xcb, 0xd2, 0x29, 0xe6, 0xa1, 0xc7, 0x93, 0x3c, 0x94, 0xe3, 0x21, 0xd4, 0x99,
-	0x10, 0x5b, 0x94, 0xf6, 0x45, 0x80, 0x04, 0x47, 0x3d, 0xcb, 0x95, 0x94, 0x4a, 0x56, 0xff, 0x1e,
-	0x41, 0x45, 0x34, 0x12, 0x1d, 0xf1, 0xab, 0xf7, 0x31, 0xcb, 0x23, 0xca, 0x85, 0x55, 0xcc, 0x70,
-	0xcc, 0x1e, 0xdc, 0x94, 0x74, 0xb9, 0x4b, 0xc2, 0xd0, 0xf5, 0x46, 0x20, 0x5d, 0xbe, 0x12, 0x0c,
-	0xb9, 0x03, 0x72, 0x1c, 0x65, 0xcf, 0xd6, 0xcb, 0x26, 0x7f, 0xd6, 0xb7, 0xe1, 0xd6, 0x4c, 0x58,
-	0x89, 0x74, 0x6c, 0x8e, 0xc6, 0xe6, 0xf8, 0x26, 0x14, 0x8e, 0xa2, 0xfa, 0xe2, 0x20, 0xf2, 0x4d,
-	0xf7, 0xe1, 0xf6, 0x18, 0xea, 0xff, 0xb3, 0xc0, 0x44, 0xc6, 0xec, 0x44, 0xc6, 0x47, 0xa0, 0xa6,
-	0x65, 0x94, 0xb5, 0xdf, 0x04, 0x85, 0x1e, 0xf0, 0x94, 0x25, 0x91, 0xa1, 0xbd, 0x63, 0x2a, 0xf4,
-	0x40, 0xff, 0x0d, 0xc1, 0xb5, 0x96, 0x77, 0xe4, 0x4e, 0x9e, 0xc9, 0xd4, 0x8d, 0xf3, 0x9f, 0x08,
-	0x62, 0x7c, 0xdb, 0x73, 0x97, 0xbd, 0xed, 0x75, 0xa8, 0x1c, 0x0e, 0x82, 0xb0, 0xd3, 0xe3, 0x0c,
-	0xd2, 0xe1, 0x0c, 0x9a, 0xe7, 0xfb, 0x66, 0x39, 0x92, 0x8f, 0xf7, 0x8b, 0xbe, 0x03, 0x38, 0xd9,
-	0x83, 0x6c, 0x39, 0xbd, 0x89, 0x68, 0x0d, 0x73, 0xdb, 0x4e, 0xdf, 0xf5, 0x0e, 0x62, 0xaa, 0x14,
-	0xa2, 0xcf, 0x5c, 0xef, 0x40, 0x6f, 0xc1, 0x75, 0x79, 0x00, 0x82, 0x96, 0x97, 0x38, 0xdf, 0x57,
-	0xe7, 0x2b, 0xbd, 0x39, 0xda, 0xe8, 0x71, 0x28, 0x59, 0xda, 0xfb, 0x90, 0x8f, 0xda, 0x89, 0x49,
-	0xe3, 0xc6, 0x04, 0x69, 0xc4, 0x1f, 0x49, 0xa6, 0xb0, 0xd9, 0xf8, 0xbb, 0x08, 0xcb, 0xcf, 0xc5,
-	0xb7, 0xc4, 0xae, 0xb0, 0xc1, 0x4f, 0x00, 0xc6, 0xed, 0x63, 0x2d, 0x65, 0xa1, 0x24, 0xd0, 0x54,
-	0xa7, 0x2b, 0xc5, 0x0f, 0xa1, 0x28, 0xeb, 0xc2, 0xd3, 0x3a, 0x35, 0xbd, 0x16, 0xbc, 0xc3, 0xa9,
-	0x30, 0xf1, 0x71, 0x82, 0xf5, 0x09, 0xc3, 0xd4, 0x2f, 0x97, 0x79, 0xc1, 0x3a, 0x50, 0x99, 0x5e,
-	0x0b, 0xf8, 0xfe, 0x65, 0xb6, 0xa2, 0xfa, 0xee, 0x05, 0x56, 0x72, 0xbe, 0x0d, 0x28, 0x08, 0x9a,
-	0x9e, 0xed, 0x2f, 0x95, 0xa0, 0xf1, 0xb3, 0x98, 0xe9, 0xe3, 0x1d, 0x31, 0xdb, 0xde, 0xec, 0x02,
-	0x99, 0x13, 0xeb, 0x29, 0xc0, 0xf8, 0x22, 0x4e, 0x81, 0x33, 0x43, 0xff, 0xf3, 0x46, 0xf4, 0x09,
-	0x94, 0x47, 0x0c, 0x8b, 0xef, 0xa5, 0xc4, 0x18, 0x9f, 0xcc, 0x39, 0x65, 0x34, 0x39, 0xc8, 0xd1,
-	0xaa, 0xc2, 0x77, 0x52, 0x7a, 0x89, 0xc9, 0x48, 0xbd, 0x9b, 0xae, 0x94, 0x93, 0x7c, 0x01, 0x6f,
-	0x4d, 0x1c, 0x61, 0xfc, 0x76, 0x1a, 0xec, 0x13, 0x37, 0x45, 0xd5, 0x17, 0x99, 0xc8, 0xb8, 0x5f,
-	0xf1, 0x45, 0x9a, 0xa4, 0x2a, 0xfc, 0x4e, 0x9a, 0xdb, 0x14, 0x75, 0xaa, 0xf7, 0x17, 0x1b, 0xc9,
-	0xe8, 0x04, 0xf0, 0x2c, 0x17, 0xe2, 0xf7, 0xe6, 0x40, 0x31, 0x9d, 0x63, 0xed, 0x42, 0x3b, 0x99,
-	0xe6, 0x73, 0x80, 0x31, 0xef, 0x4c, 0x21, 0x3d, 0x43, 0xaa, 0x6a, 0x6d, 0xae, 0x5e, 0x84, 0xdb,
-	0xfa, 0xf8, 0xe4, 0x4c, 0xcb, 0xbc, 0x3a, 0xd3, 0x32, 0xaf, 0xcf, 0x34, 0xf4, 0xdd, 0x50, 0x43,
-	0xbf, 0x0c, 0x35, 0xf4, 0xc7, 0x50, 0x43, 0x27, 0x43, 0x0d, 0xfd, 0x35, 0xd4, 0xd0, 0x3f, 0x43,
-	0x2d, 0xf3, 0x7a, 0xa8, 0xa1, 0x1f, 0xcf, 0xb5, 0xcc, 0xc9, 0xb9, 0x96, 0x79, 0x75, 0xae, 0x65,
-	0xbe, 0x2c, 0x8f, 0xfe, 0xed, 0x75, 0x0b, 0x7c, 0x6f, 0x7e, 0xf0, 0x6f, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0x91, 0x52, 0x5e, 0xf0, 0x13, 0x0e, 0x00, 0x00,
+	// 1403 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x58, 0xcd, 0x6f, 0xdb, 0xc6,
+	0x12, 0xf7, 0x52, 0x1f, 0x96, 0xc6, 0x78, 0xb2, 0xbc, 0xc8, 0x87, 0x4c, 0x27, 0x94, 0x1f, 0x5f,
+	0x3e, 0x64, 0x04, 0x91, 0x90, 0xbc, 0x00, 0x2f, 0x78, 0x69, 0xd0, 0xda, 0x51, 0x10, 0xc8, 0x69,
+	0x2b, 0x83, 0x82, 0x73, 0x28, 0xda, 0x0a, 0x94, 0xb8, 0x66, 0x08, 0xcb, 0x24, 0xbb, 0x24, 0xd3,
+	0x18, 0xe8, 0xa1, 0x68, 0x4f, 0x3d, 0x14, 0xe8, 0xad, 0xe8, 0xa9, 0xd7, 0xfe, 0x0b, 0xfd, 0x07,
+	0x8a, 0x1e, 0x73, 0xcc, 0xc9, 0x6d, 0x94, 0x4b, 0x6f, 0xcd, 0x9f, 0x50, 0x70, 0xb9, 0x94, 0x28,
+	0x92, 0xfa, 0x4a, 0x4e, 0x16, 0x67, 0x67, 0x66, 0x67, 0xe6, 0x37, 0x3b, 0xbf, 0x49, 0x60, 0xc7,
+	0xa1, 0xfd, 0x46, 0x7f, 0x60, 0x79, 0x5a, 0xc3, 0xa6, 0xd6, 0x91, 0x31, 0x20, 0xe1, 0x5f, 0xbb,
+	0xd7, 0x70, 0x08, 0x7d, 0x66, 0xf4, 0x49, 0xdd, 0xa6, 0x96, 0x6b, 0xe1, 0x35, 0xfb, 0x79, 0x9d,
+	0x4b, 0x1c, 0xf1, 0xa6, 0x6e, 0xb8, 0x4f, 0xbd, 0x5e, 0xbd, 0x6f, 0x9d, 0x34, 0x74, 0x4b, 0xb7,
+	0x1a, 0x4c, 0xa7, 0xe7, 0x1d, 0xb1, 0x2f, 0xf6, 0xc1, 0x7e, 0x05, 0xb6, 0xa2, 0xa4, 0x5b, 0x96,
+	0x1e, 0xf8, 0x0e, 0xb4, 0xbe, 0xa4, 0xaa, 0x6d, 0x13, 0xea, 0xf0, 0xf3, 0xaa, 0x1f, 0x86, 0x6a,
+	0x1b, 0x81, 0x42, 0xc3, 0xf3, 0x0c, 0xcd, 0xee, 0xb1, 0x3f, 0x81, 0x82, 0xfc, 0x5d, 0x06, 0x0a,
+	0x87, 0x0e, 0xa1, 0x2d, 0xf3, 0xc8, 0xc2, 0xd7, 0x41, 0x30, 0xb4, 0x0a, 0xda, 0x46, 0xb5, 0xb5,
+	0xdb, 0xeb, 0x75, 0xfb, 0x79, 0x3d, 0xd0, 0xaf, 0x1f, 0x1e, 0xb6, 0x9a, 0x7b, 0xf9, 0xe1, 0x59,
+	0x55, 0x68, 0x35, 0x15, 0xc1, 0xd0, 0xf0, 0x2d, 0xc8, 0x5b, 0x54, 0xef, 0x1a, 0x5a, 0x45, 0x48,
+	0x57, 0x2e, 0x0e, 0xcf, 0xaa, 0xb9, 0x36, 0xd5, 0x5b, 0x4d, 0x25, 0x67, 0x51, 0xbd, 0xa5, 0x61,
+	0x11, 0x0a, 0x9e, 0x43, 0xa8, 0xa9, 0x9e, 0x90, 0x4a, 0x66, 0x1b, 0xd5, 0x8a, 0xca, 0xe8, 0x1b,
+	0x5f, 0x06, 0x38, 0x32, 0xa8, 0xe3, 0x76, 0xd9, 0x69, 0x96, 0x9d, 0x16, 0x99, 0xe4, 0x63, 0xff,
+	0x78, 0x0b, 0x8a, 0x03, 0x35, 0x3c, 0xcd, 0x05, 0xb6, 0xbe, 0x80, 0x1d, 0x9e, 0x83, 0x1c, 0x39,
+	0x51, 0x8d, 0x41, 0x25, 0xcf, 0x0e, 0x82, 0x0f, 0x7c, 0x1d, 0xd6, 0x79, 0xb9, 0xbb, 0xb6, 0xd1,
+	0x77, 0x3d, 0x4a, 0x2a, 0xab, 0xec, 0xbc, 0xc4, 0xc5, 0x07, 0x81, 0x14, 0x57, 0x61, 0xcd, 0x70,
+	0xba, 0xaa, 0x6d, 0x53, 0xeb, 0x19, 0xd1, 0x2a, 0x85, 0x6d, 0x54, 0x2b, 0x28, 0x60, 0x38, 0xbb,
+	0x5c, 0x82, 0x6f, 0xc0, 0x86, 0xa1, 0x11, 0xd3, 0x35, 0xdc, 0xd3, 0xae, 0x2f, 0x32, 0x34, 0x42,
+	0x2b, 0x45, 0xe6, 0xab, 0x1c, 0x1e, 0x1c, 0x70, 0x39, 0x7e, 0x0f, 0xca, 0xaa, 0xe7, 0x3e, 0x1d,
+	0x29, 0xfa, 0x15, 0x02, 0x5f, 0x77, 0x0f, 0x0f, 0xcf, 0xaa, 0xa5, 0x5d, 0xcf, 0x7d, 0x1a, 0xea,
+	0xb6, 0x9a, 0x4a, 0x49, 0x8d, 0x7e, 0x6b, 0xf2, 0x4d, 0x38, 0xff, 0x88, 0xb8, 0x3e, 0x1a, 0x7b,
+	0xa7, 0x0f, 0xfd, 0x34, 0x14, 0xf2, 0x85, 0x47, 0x1c, 0x77, 0x9c, 0x23, 0x8a, 0xe4, 0x28, 0x7f,
+	0x0e, 0xd2, 0x48, 0x3d, 0xe6, 0x99, 0xdb, 0xa5, 0x85, 0x83, 0x16, 0x0e, 0xe7, 0x27, 0x04, 0xab,
+	0x3e, 0x84, 0x4b, 0x75, 0xc6, 0x26, 0x14, 0xfc, 0xce, 0x60, 0x50, 0x09, 0x2c, 0xda, 0x55, 0x8b,
+	0xea, 0x0c, 0xa9, 0x2a, 0xac, 0x69, 0xd6, 0x89, 0x6a, 0x98, 0xdd, 0x48, 0x13, 0x40, 0x20, 0x62,
+	0x0a, 0x3b, 0x50, 0x26, 0xa6, 0xda, 0x1b, 0x10, 0x8e, 0x87, 0x3a, 0x70, 0x58, 0x33, 0x14, 0x94,
+	0xf5, 0x40, 0xbe, 0x1b, 0x8a, 0xe5, 0x9f, 0x05, 0xd8, 0x78, 0x40, 0x89, 0xea, 0x12, 0x3f, 0xff,
+	0x30, 0xdf, 0x71, 0x5b, 0xa2, 0xb7, 0x69, 0x4b, 0x61, 0x66, 0x5b, 0x66, 0x66, 0xb6, 0x65, 0x76,
+	0x5a, 0x5b, 0xe6, 0xa2, 0x6d, 0x99, 0xda, 0x4c, 0xf9, 0x25, 0x9a, 0x69, 0x75, 0x61, 0xf4, 0x7e,
+	0xcd, 0xc0, 0xc5, 0xa0, 0x42, 0x6d, 0xaa, 0xef, 0x9a, 0x5a, 0xb4, 0x4e, 0xff, 0x87, 0x8c, 0x45,
+	0x75, 0x5e, 0xa4, 0x5a, 0x3d, 0x32, 0x7f, 0xea, 0x53, 0x4c, 0xea, 0x6d, 0xaa, 0x2b, 0xbe, 0x11,
+	0xbe, 0x0f, 0x59, 0xbf, 0x40, 0xfc, 0xe1, 0xef, 0x2c, 0x64, 0xcc, 0x7e, 0x33, 0x33, 0x71, 0x17,
+	0x32, 0x6d, 0xaa, 0x4f, 0xb4, 0x09, 0x9a, 0xd9, 0x26, 0x42, 0xbc, 0x4d, 0xc4, 0x3f, 0x10, 0x64,
+	0x7d, 0x8f, 0x13, 0xd8, 0xa1, 0x99, 0xd8, 0x09, 0x33, 0xb1, 0xcb, 0x4c, 0xc3, 0x2e, 0x3b, 0x17,
+	0xbb, 0xdc, 0x12, 0xd8, 0xe5, 0x17, 0xc6, 0xee, 0x5b, 0x04, 0x95, 0x64, 0x2d, 0x1d, 0xdb, 0x32,
+	0x1d, 0xf2, 0x36, 0x4d, 0x7e, 0x07, 0x56, 0xfd, 0xc2, 0xcc, 0x98, 0xd7, 0x30, 0x3c, 0xab, 0xe6,
+	0x19, 0x0f, 0x34, 0x95, 0xbc, 0xaf, 0xdb, 0xd2, 0xe4, 0xbb, 0x6c, 0x1c, 0xb5, 0xa9, 0xbe, 0x77,
+	0xda, 0x64, 0xd5, 0x0f, 0xdb, 0x27, 0x86, 0x10, 0x8a, 0x23, 0x24, 0x97, 0xa1, 0x14, 0x58, 0x3a,
+	0xdc, 0x44, 0xbe, 0x07, 0xeb, 0x23, 0x09, 0xcf, 0xa3, 0x06, 0x59, 0x8b, 0xea, 0x4e, 0x05, 0x6d,
+	0x67, 0x6a, 0x6b, 0xb7, 0xcf, 0x4d, 0x34, 0x12, 0x1f, 0x3b, 0x0a, 0xd3, 0x90, 0x7f, 0x43, 0xb0,
+	0x71, 0x68, 0x6b, 0xb1, 0xc7, 0xbe, 0xf0, 0x48, 0x7a, 0x08, 0xeb, 0x9a, 0xe1, 0xd8, 0x03, 0xf5,
+	0x74, 0xc4, 0x05, 0x19, 0x66, 0x75, 0xa9, 0x1e, 0xb0, 0x67, 0x3d, 0x64, 0xcf, 0x7a, 0xc7, 0xa5,
+	0x86, 0xa9, 0x3f, 0x51, 0x07, 0x1e, 0x51, 0x4a, 0xdc, 0x28, 0x64, 0x8a, 0x7b, 0x93, 0x4c, 0x91,
+	0x65, 0x2e, 0xc4, 0x84, 0x8b, 0x3d, 0xcb, 0x1a, 0x04, 0x0e, 0x22, 0x2c, 0xb2, 0x9f, 0x2d, 0x08,
+	0xe5, 0x8c, 0xfc, 0x0d, 0x82, 0x72, 0x90, 0x88, 0xff, 0x9c, 0x96, 0xcf, 0x23, 0x39, 0x1e, 0x85,
+	0xb9, 0x51, 0x24, 0x46, 0xe7, 0x23, 0xb8, 0xc0, 0x69, 0xa3, 0x43, 0x5c, 0xd7, 0x30, 0x47, 0x20,
+	0x2d, 0x1c, 0x09, 0xcf, 0xe6, 0x00, 0x2e, 0x26, 0x1c, 0x71, 0x6c, 0x77, 0xa0, 0xac, 0x9a, 0xea,
+	0xe0, 0xd4, 0x35, 0xfa, 0x4e, 0xd7, 0xb2, 0x5d, 0xcb, 0x73, 0x59, 0xcd, 0x0b, 0xca, 0xfa, 0x48,
+	0xde, 0x66, 0xe2, 0xfd, 0x6c, 0x01, 0x95, 0x05, 0xee, 0xf1, 0x47, 0x04, 0x9b, 0x63, 0xa0, 0xdf,
+	0x36, 0x3c, 0xbf, 0x50, 0x89, 0xdb, 0xe7, 0xc3, 0x95, 0x12, 0x99, 0x50, 0xce, 0xec, 0x67, 0x0b,
+	0x99, 0x72, 0x56, 0xbe, 0x03, 0x62, 0x5a, 0x60, 0x3c, 0xdd, 0x0b, 0x20, 0x58, 0xc7, 0x2c, 0xb2,
+	0x42, 0x10, 0x48, 0xfb, 0xb1, 0x22, 0x58, 0xc7, 0xf2, 0x03, 0xa8, 0xf0, 0x0a, 0xed, 0xba, 0x2e,
+	0x35, 0x7a, 0x9e, 0x4b, 0x96, 0xce, 0x46, 0xbe, 0x0b, 0x9b, 0x29, 0x4e, 0xf8, 0xcd, 0x5b, 0x50,
+	0x74, 0x2d, 0x8f, 0x76, 0x1d, 0x42, 0xcc, 0x20, 0x00, 0xa5, 0xe0, 0x0b, 0x3a, 0x84, 0x98, 0xf2,
+	0x57, 0x50, 0xe9, 0xbc, 0xeb, 0xf5, 0xf8, 0x7f, 0xd1, 0x1b, 0xe6, 0xb7, 0xdb, 0xf8, 0xf6, 0x2d,
+	0xd8, 0xec, 0x4c, 0x8b, 0x5b, 0xfe, 0x1b, 0xc1, 0x46, 0xcb, 0x7c, 0x66, 0x4c, 0x3e, 0xe9, 0xd4,
+	0x3d, 0xe7, 0x9d, 0x46, 0xf9, 0x78, 0x58, 0x66, 0x17, 0x1d, 0x96, 0x35, 0x28, 0x9f, 0x78, 0x8e,
+	0xdb, 0xed, 0xb3, 0x01, 0xdc, 0x65, 0x64, 0x97, 0x63, 0x95, 0x2d, 0xf9, 0xf2, 0xf1, 0xd6, 0xb1,
+	0x14, 0x9b, 0xcb, 0x8f, 0x01, 0x47, 0x13, 0xe6, 0xf8, 0xa5, 0x67, 0xec, 0x2f, 0xa5, 0x4c, 0xb7,
+	0x3b, 0x30, 0xcc, 0xe3, 0x90, 0x02, 0x03, 0xd1, 0x87, 0x86, 0x79, 0x2c, 0xb7, 0xe0, 0x1c, 0xef,
+	0x09, 0xa7, 0x65, 0x46, 0x66, 0xc9, 0xf2, 0xdc, 0x20, 0x37, 0x47, 0x4b, 0x67, 0xe8, 0x8a, 0x87,
+	0x76, 0x03, 0x72, 0x7e, 0xee, 0xe1, 0x80, 0x3e, 0x3f, 0x31, 0xa0, 0xc3, 0x7f, 0x32, 0x28, 0x81,
+	0xce, 0xed, 0xef, 0x01, 0x4a, 0x07, 0xc1, 0x66, 0xdd, 0x09, 0x74, 0xf0, 0x7d, 0x80, 0x48, 0xad,
+	0xa4, 0x94, 0x45, 0x21, 0x02, 0xbd, 0x18, 0x8f, 0x14, 0xdf, 0x82, 0x55, 0x1e, 0x17, 0x8e, 0x9f,
+	0x89, 0xe9, 0xb1, 0xe0, 0xc7, 0x8c, 0x76, 0x22, 0xfb, 0x33, 0x96, 0x27, 0x14, 0x53, 0x97, 0xeb,
+	0x69, 0xce, 0x3e, 0x1b, 0x4d, 0xb7, 0xf8, 0x76, 0x8d, 0x6f, 0xa4, 0x7b, 0x4d, 0xdd, 0xc1, 0xa7,
+	0xb9, 0xef, 0x42, 0x39, 0xce, 0xf0, 0xf8, 0xca, 0x22, 0xcb, 0x94, 0x78, 0x75, 0x8e, 0x16, 0x87,
+	0xaf, 0x01, 0xf9, 0x80, 0x71, 0x93, 0xe5, 0x4b, 0xe5, 0x5a, 0xbc, 0x1f, 0x92, 0x76, 0x48, 0xf7,
+	0xc9, 0xea, 0x25, 0x77, 0x81, 0x29, 0xbe, 0x1e, 0x00, 0x8c, 0xc7, 0x65, 0x0c, 0xfb, 0x04, 0x93,
+	0x4f, 0x2b, 0xd1, 0x07, 0x50, 0x1c, 0x91, 0x25, 0xbe, 0x9c, 0xe2, 0x63, 0xdc, 0xf8, 0x53, 0xc2,
+	0x68, 0xb2, 0x1e, 0xf2, 0xb7, 0x0e, 0xbc, 0x95, 0x92, 0x4b, 0x38, 0x0c, 0xc5, 0x4b, 0xe9, 0x87,
+	0xbc, 0x92, 0x4f, 0xe0, 0x5f, 0x13, 0x2f, 0x04, 0xff, 0x3b, 0x0d, 0xff, 0x89, 0x87, 0x28, 0xca,
+	0xb3, 0x54, 0xb8, 0xdf, 0x4f, 0xd9, 0x4e, 0x14, 0x25, 0x14, 0xfc, 0x9f, 0x34, 0xb3, 0x18, 0x0f,
+	0x8a, 0x57, 0x66, 0x2b, 0x71, 0xef, 0x04, 0x70, 0x92, 0xb1, 0xf0, 0xb5, 0x29, 0x50, 0xc4, 0xef,
+	0xb8, 0x3e, 0x57, 0x8f, 0x5f, 0xd3, 0x83, 0x8d, 0x04, 0x3b, 0xe1, 0xab, 0x69, 0x11, 0x26, 0x38,
+	0x48, 0xbc, 0x36, 0x4f, 0x6d, 0x7c, 0x47, 0x67, 0xce, 0x1d, 0x9d, 0xc5, 0xee, 0x98, 0x4a, 0x48,
+	0xf8, 0x23, 0x80, 0xf1, 0x78, 0x8e, 0x75, 0x6c, 0x82, 0xa8, 0xc4, 0xea, 0xd4, 0xf3, 0xc0, 0xdd,
+	0xde, 0xfb, 0x2f, 0x5e, 0x49, 0x2b, 0x2f, 0x5f, 0x49, 0x2b, 0x6f, 0x5e, 0x49, 0xe8, 0xeb, 0xa1,
+	0x84, 0x7e, 0x19, 0x4a, 0xe8, 0xf7, 0xa1, 0x84, 0x5e, 0x0c, 0x25, 0xf4, 0xe7, 0x50, 0x42, 0x7f,
+	0x0d, 0xa5, 0x95, 0x37, 0x43, 0x09, 0xfd, 0xf0, 0x5a, 0x5a, 0x79, 0xf1, 0x5a, 0x5a, 0x79, 0xf9,
+	0x5a, 0x5a, 0xf9, 0xa4, 0x38, 0xfa, 0x2f, 0xa2, 0x5e, 0x9e, 0x71, 0xeb, 0x7f, 0xff, 0x09, 0x00,
+	0x00, 0xff, 0xff, 0xad, 0x27, 0x8d, 0xfb, 0x48, 0x12, 0x00, 0x00,
 }
 
 func (this *UserInfo) Equal(that interface{}) bool {
@@ -1331,6 +1597,12 @@ func (this *UserInfo) Equal(that interface{}) bool {
 	if this.IsApproved != that1.IsApproved {
 		return false
 	}
+	if this.IdentityProvider != that1.IdentityProvider {
+		return false
+	}
+	if this.AuthProviderID != that1.AuthProviderID {
+		return false
+	}
 	return true
 }
 func (this *GetUserByEmailRequest) Equal(that interface{}) bool {
@@ -1353,6 +1625,30 @@ func (this *GetUserByEmailRequest) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Email != that1.Email {
+		return false
+	}
+	return true
+}
+func (this *GetUserByAuthProviderIDRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GetUserByAuthProviderIDRequest)
+	if !ok {
+		that2, ok := that.(GetUserByAuthProviderIDRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.AuthProviderID != that1.AuthProviderID {
 		return false
 	}
 	return true
@@ -1422,6 +1718,12 @@ func (this *CreateUserRequest) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Email != that1.Email {
+		return false
+	}
+	if this.IdentityProvider != that1.IdentityProvider {
+		return false
+	}
+	if this.AuthProviderID != that1.AuthProviderID {
 		return false
 	}
 	return true
@@ -1509,6 +1811,12 @@ func (this *CreateOrgAndUserRequest_User) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Email != that1.Email {
+		return false
+	}
+	if this.IdentityProvider != that1.IdentityProvider {
+		return false
+	}
+	if this.AuthProviderID != that1.AuthProviderID {
 		return false
 	}
 	return true
@@ -1693,14 +2001,6 @@ func (this *GetUserSettingsRequest) Equal(that interface{}) bool {
 	if !this.ID.Equal(that1.ID) {
 		return false
 	}
-	if len(this.Keys) != len(that1.Keys) {
-		return false
-	}
-	for i := range this.Keys {
-		if this.Keys[i] != that1.Keys[i] {
-			return false
-		}
-	}
 	return true
 }
 func (this *GetUserSettingsResponse) Equal(that interface{}) bool {
@@ -1722,21 +2022,8 @@ func (this *GetUserSettingsResponse) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if len(this.Keys) != len(that1.Keys) {
+	if this.AnalyticsOptout != that1.AnalyticsOptout {
 		return false
-	}
-	for i := range this.Keys {
-		if this.Keys[i] != that1.Keys[i] {
-			return false
-		}
-	}
-	if len(this.Values) != len(that1.Values) {
-		return false
-	}
-	for i := range this.Values {
-		if this.Values[i] != that1.Values[i] {
-			return false
-		}
 	}
 	return true
 }
@@ -1762,21 +2049,8 @@ func (this *UpdateUserSettingsRequest) Equal(that interface{}) bool {
 	if !this.ID.Equal(that1.ID) {
 		return false
 	}
-	if len(this.Keys) != len(that1.Keys) {
+	if !this.AnalyticsOptout.Equal(that1.AnalyticsOptout) {
 		return false
-	}
-	for i := range this.Keys {
-		if this.Keys[i] != that1.Keys[i] {
-			return false
-		}
-	}
-	if len(this.Values) != len(that1.Values) {
-		return false
-	}
-	for i := range this.Values {
-		if this.Values[i] != that1.Values[i] {
-			return false
-		}
 	}
 	return true
 }
@@ -1800,6 +2074,102 @@ func (this *UpdateUserSettingsResponse) Equal(that interface{}) bool {
 		return false
 	}
 	if this.OK != that1.OK {
+		return false
+	}
+	return true
+}
+func (this *GetUserAttributesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GetUserAttributesRequest)
+	if !ok {
+		that2, ok := that.(GetUserAttributesRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.ID.Equal(that1.ID) {
+		return false
+	}
+	return true
+}
+func (this *GetUserAttributesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GetUserAttributesResponse)
+	if !ok {
+		that2, ok := that.(GetUserAttributesResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TourSeen != that1.TourSeen {
+		return false
+	}
+	return true
+}
+func (this *SetUserAttributesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SetUserAttributesRequest)
+	if !ok {
+		that2, ok := that.(SetUserAttributesRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.ID.Equal(that1.ID) {
+		return false
+	}
+	if !this.TourSeen.Equal(that1.TourSeen) {
+		return false
+	}
+	return true
+}
+func (this *SetUserAttributesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SetUserAttributesResponse)
+	if !ok {
+		that2, ok := that.(SetUserAttributesResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
 		return false
 	}
 	return true
@@ -1836,6 +2206,9 @@ func (this *InviteUserRequest) Equal(that interface{}) bool {
 		return false
 	}
 	if this.MustCreateUser != that1.MustCreateUser {
+		return false
+	}
+	if this.IdentityProvider != that1.IdentityProvider {
 		return false
 	}
 	return true
@@ -1924,7 +2297,7 @@ func (this *UserInfo) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 12)
+	s := make([]string, 0, 14)
 	s = append(s, "&profilepb.UserInfo{")
 	if this.ID != nil {
 		s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
@@ -1938,6 +2311,8 @@ func (this *UserInfo) GoString() string {
 	s = append(s, "Email: "+fmt.Sprintf("%#v", this.Email)+",\n")
 	s = append(s, "ProfilePicture: "+fmt.Sprintf("%#v", this.ProfilePicture)+",\n")
 	s = append(s, "IsApproved: "+fmt.Sprintf("%#v", this.IsApproved)+",\n")
+	s = append(s, "IdentityProvider: "+fmt.Sprintf("%#v", this.IdentityProvider)+",\n")
+	s = append(s, "AuthProviderID: "+fmt.Sprintf("%#v", this.AuthProviderID)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1948,6 +2323,16 @@ func (this *GetUserByEmailRequest) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&profilepb.GetUserByEmailRequest{")
 	s = append(s, "Email: "+fmt.Sprintf("%#v", this.Email)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetUserByAuthProviderIDRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&profilepb.GetUserByAuthProviderIDRequest{")
+	s = append(s, "AuthProviderID: "+fmt.Sprintf("%#v", this.AuthProviderID)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1970,7 +2355,7 @@ func (this *CreateUserRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 9)
+	s := make([]string, 0, 11)
 	s = append(s, "&profilepb.CreateUserRequest{")
 	if this.OrgID != nil {
 		s = append(s, "OrgID: "+fmt.Sprintf("%#v", this.OrgID)+",\n")
@@ -1979,6 +2364,8 @@ func (this *CreateUserRequest) GoString() string {
 	s = append(s, "FirstName: "+fmt.Sprintf("%#v", this.FirstName)+",\n")
 	s = append(s, "LastName: "+fmt.Sprintf("%#v", this.LastName)+",\n")
 	s = append(s, "Email: "+fmt.Sprintf("%#v", this.Email)+",\n")
+	s = append(s, "IdentityProvider: "+fmt.Sprintf("%#v", this.IdentityProvider)+",\n")
+	s = append(s, "AuthProviderID: "+fmt.Sprintf("%#v", this.AuthProviderID)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2012,12 +2399,14 @@ func (this *CreateOrgAndUserRequest_User) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 10)
 	s = append(s, "&profilepb.CreateOrgAndUserRequest_User{")
 	s = append(s, "Username: "+fmt.Sprintf("%#v", this.Username)+",\n")
 	s = append(s, "FirstName: "+fmt.Sprintf("%#v", this.FirstName)+",\n")
 	s = append(s, "LastName: "+fmt.Sprintf("%#v", this.LastName)+",\n")
 	s = append(s, "Email: "+fmt.Sprintf("%#v", this.Email)+",\n")
+	s = append(s, "IdentityProvider: "+fmt.Sprintf("%#v", this.IdentityProvider)+",\n")
+	s = append(s, "AuthProviderID: "+fmt.Sprintf("%#v", this.AuthProviderID)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2104,12 +2493,11 @@ func (this *GetUserSettingsRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 5)
 	s = append(s, "&profilepb.GetUserSettingsRequest{")
 	if this.ID != nil {
 		s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
 	}
-	s = append(s, "Keys: "+fmt.Sprintf("%#v", this.Keys)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2117,10 +2505,9 @@ func (this *GetUserSettingsResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 5)
 	s = append(s, "&profilepb.GetUserSettingsResponse{")
-	s = append(s, "Keys: "+fmt.Sprintf("%#v", this.Keys)+",\n")
-	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
+	s = append(s, "AnalyticsOptout: "+fmt.Sprintf("%#v", this.AnalyticsOptout)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2128,13 +2515,14 @@ func (this *UpdateUserSettingsRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 6)
 	s = append(s, "&profilepb.UpdateUserSettingsRequest{")
 	if this.ID != nil {
 		s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
 	}
-	s = append(s, "Keys: "+fmt.Sprintf("%#v", this.Keys)+",\n")
-	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
+	if this.AnalyticsOptout != nil {
+		s = append(s, "AnalyticsOptout: "+fmt.Sprintf("%#v", this.AnalyticsOptout)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2148,11 +2536,57 @@ func (this *UpdateUserSettingsResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+func (this *GetUserAttributesRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&profilepb.GetUserAttributesRequest{")
+	if this.ID != nil {
+		s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetUserAttributesResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&profilepb.GetUserAttributesResponse{")
+	s = append(s, "TourSeen: "+fmt.Sprintf("%#v", this.TourSeen)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SetUserAttributesRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&profilepb.SetUserAttributesRequest{")
+	if this.ID != nil {
+		s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
+	}
+	if this.TourSeen != nil {
+		s = append(s, "TourSeen: "+fmt.Sprintf("%#v", this.TourSeen)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SetUserAttributesResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&profilepb.SetUserAttributesResponse{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func (this *InviteUserRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 9)
+	s := make([]string, 0, 10)
 	s = append(s, "&profilepb.InviteUserRequest{")
 	s = append(s, "Email: "+fmt.Sprintf("%#v", this.Email)+",\n")
 	s = append(s, "FirstName: "+fmt.Sprintf("%#v", this.FirstName)+",\n")
@@ -2161,6 +2595,7 @@ func (this *InviteUserRequest) GoString() string {
 		s = append(s, "OrgID: "+fmt.Sprintf("%#v", this.OrgID)+",\n")
 	}
 	s = append(s, "MustCreateUser: "+fmt.Sprintf("%#v", this.MustCreateUser)+",\n")
+	s = append(s, "IdentityProvider: "+fmt.Sprintf("%#v", this.IdentityProvider)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2223,6 +2658,7 @@ type ProfileServiceClient interface {
 	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*uuidpb.UUID, error)
 	GetUser(ctx context.Context, in *uuidpb.UUID, opts ...grpc.CallOption) (*UserInfo, error)
 	GetUserByEmail(ctx context.Context, in *GetUserByEmailRequest, opts ...grpc.CallOption) (*UserInfo, error)
+	GetUserByAuthProviderID(ctx context.Context, in *GetUserByAuthProviderIDRequest, opts ...grpc.CallOption) (*UserInfo, error)
 	CreateOrgAndUser(ctx context.Context, in *CreateOrgAndUserRequest, opts ...grpc.CallOption) (*CreateOrgAndUserResponse, error)
 	GetOrg(ctx context.Context, in *uuidpb.UUID, opts ...grpc.CallOption) (*OrgInfo, error)
 	GetOrgByDomain(ctx context.Context, in *GetOrgByDomainRequest, opts ...grpc.CallOption) (*OrgInfo, error)
@@ -2232,6 +2668,8 @@ type ProfileServiceClient interface {
 	GetUsersInOrg(ctx context.Context, in *GetUsersInOrgRequest, opts ...grpc.CallOption) (*GetUsersInOrgResponse, error)
 	GetUserSettings(ctx context.Context, in *GetUserSettingsRequest, opts ...grpc.CallOption) (*GetUserSettingsResponse, error)
 	UpdateUserSettings(ctx context.Context, in *UpdateUserSettingsRequest, opts ...grpc.CallOption) (*UpdateUserSettingsResponse, error)
+	GetUserAttributes(ctx context.Context, in *GetUserAttributesRequest, opts ...grpc.CallOption) (*GetUserAttributesResponse, error)
+	SetUserAttributes(ctx context.Context, in *SetUserAttributesRequest, opts ...grpc.CallOption) (*SetUserAttributesResponse, error)
 	InviteUser(ctx context.Context, in *InviteUserRequest, opts ...grpc.CallOption) (*InviteUserResponse, error)
 }
 
@@ -2264,6 +2702,15 @@ func (c *profileServiceClient) GetUser(ctx context.Context, in *uuidpb.UUID, opt
 func (c *profileServiceClient) GetUserByEmail(ctx context.Context, in *GetUserByEmailRequest, opts ...grpc.CallOption) (*UserInfo, error) {
 	out := new(UserInfo)
 	err := c.cc.Invoke(ctx, "/px.services.ProfileService/GetUserByEmail", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *profileServiceClient) GetUserByAuthProviderID(ctx context.Context, in *GetUserByAuthProviderIDRequest, opts ...grpc.CallOption) (*UserInfo, error) {
+	out := new(UserInfo)
+	err := c.cc.Invoke(ctx, "/px.services.ProfileService/GetUserByAuthProviderID", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2351,6 +2798,24 @@ func (c *profileServiceClient) UpdateUserSettings(ctx context.Context, in *Updat
 	return out, nil
 }
 
+func (c *profileServiceClient) GetUserAttributes(ctx context.Context, in *GetUserAttributesRequest, opts ...grpc.CallOption) (*GetUserAttributesResponse, error) {
+	out := new(GetUserAttributesResponse)
+	err := c.cc.Invoke(ctx, "/px.services.ProfileService/GetUserAttributes", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *profileServiceClient) SetUserAttributes(ctx context.Context, in *SetUserAttributesRequest, opts ...grpc.CallOption) (*SetUserAttributesResponse, error) {
+	out := new(SetUserAttributesResponse)
+	err := c.cc.Invoke(ctx, "/px.services.ProfileService/SetUserAttributes", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *profileServiceClient) InviteUser(ctx context.Context, in *InviteUserRequest, opts ...grpc.CallOption) (*InviteUserResponse, error) {
 	out := new(InviteUserResponse)
 	err := c.cc.Invoke(ctx, "/px.services.ProfileService/InviteUser", in, out, opts...)
@@ -2365,6 +2830,7 @@ type ProfileServiceServer interface {
 	CreateUser(context.Context, *CreateUserRequest) (*uuidpb.UUID, error)
 	GetUser(context.Context, *uuidpb.UUID) (*UserInfo, error)
 	GetUserByEmail(context.Context, *GetUserByEmailRequest) (*UserInfo, error)
+	GetUserByAuthProviderID(context.Context, *GetUserByAuthProviderIDRequest) (*UserInfo, error)
 	CreateOrgAndUser(context.Context, *CreateOrgAndUserRequest) (*CreateOrgAndUserResponse, error)
 	GetOrg(context.Context, *uuidpb.UUID) (*OrgInfo, error)
 	GetOrgByDomain(context.Context, *GetOrgByDomainRequest) (*OrgInfo, error)
@@ -2374,6 +2840,8 @@ type ProfileServiceServer interface {
 	GetUsersInOrg(context.Context, *GetUsersInOrgRequest) (*GetUsersInOrgResponse, error)
 	GetUserSettings(context.Context, *GetUserSettingsRequest) (*GetUserSettingsResponse, error)
 	UpdateUserSettings(context.Context, *UpdateUserSettingsRequest) (*UpdateUserSettingsResponse, error)
+	GetUserAttributes(context.Context, *GetUserAttributesRequest) (*GetUserAttributesResponse, error)
+	SetUserAttributes(context.Context, *SetUserAttributesRequest) (*SetUserAttributesResponse, error)
 	InviteUser(context.Context, *InviteUserRequest) (*InviteUserResponse, error)
 }
 
@@ -2389,6 +2857,9 @@ func (*UnimplementedProfileServiceServer) GetUser(ctx context.Context, req *uuid
 }
 func (*UnimplementedProfileServiceServer) GetUserByEmail(ctx context.Context, req *GetUserByEmailRequest) (*UserInfo, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUserByEmail not implemented")
+}
+func (*UnimplementedProfileServiceServer) GetUserByAuthProviderID(ctx context.Context, req *GetUserByAuthProviderIDRequest) (*UserInfo, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserByAuthProviderID not implemented")
 }
 func (*UnimplementedProfileServiceServer) CreateOrgAndUser(ctx context.Context, req *CreateOrgAndUserRequest) (*CreateOrgAndUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateOrgAndUser not implemented")
@@ -2416,6 +2887,12 @@ func (*UnimplementedProfileServiceServer) GetUserSettings(ctx context.Context, r
 }
 func (*UnimplementedProfileServiceServer) UpdateUserSettings(ctx context.Context, req *UpdateUserSettingsRequest) (*UpdateUserSettingsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateUserSettings not implemented")
+}
+func (*UnimplementedProfileServiceServer) GetUserAttributes(ctx context.Context, req *GetUserAttributesRequest) (*GetUserAttributesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserAttributes not implemented")
+}
+func (*UnimplementedProfileServiceServer) SetUserAttributes(ctx context.Context, req *SetUserAttributesRequest) (*SetUserAttributesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetUserAttributes not implemented")
 }
 func (*UnimplementedProfileServiceServer) InviteUser(ctx context.Context, req *InviteUserRequest) (*InviteUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InviteUser not implemented")
@@ -2475,6 +2952,24 @@ func _ProfileService_GetUserByEmail_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProfileServiceServer).GetUserByEmail(ctx, req.(*GetUserByEmailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProfileService_GetUserByAuthProviderID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserByAuthProviderIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProfileServiceServer).GetUserByAuthProviderID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/px.services.ProfileService/GetUserByAuthProviderID",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProfileServiceServer).GetUserByAuthProviderID(ctx, req.(*GetUserByAuthProviderIDRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2641,6 +3136,42 @@ func _ProfileService_UpdateUserSettings_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProfileService_GetUserAttributes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserAttributesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProfileServiceServer).GetUserAttributes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/px.services.ProfileService/GetUserAttributes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProfileServiceServer).GetUserAttributes(ctx, req.(*GetUserAttributesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProfileService_SetUserAttributes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserAttributesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProfileServiceServer).SetUserAttributes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/px.services.ProfileService/SetUserAttributes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProfileServiceServer).SetUserAttributes(ctx, req.(*SetUserAttributesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProfileService_InviteUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InviteUserRequest)
 	if err := dec(in); err != nil {
@@ -2674,6 +3205,10 @@ var _ProfileService_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUserByEmail",
 			Handler:    _ProfileService_GetUserByEmail_Handler,
+		},
+		{
+			MethodName: "GetUserByAuthProviderID",
+			Handler:    _ProfileService_GetUserByAuthProviderID_Handler,
 		},
 		{
 			MethodName: "CreateOrgAndUser",
@@ -2712,6 +3247,14 @@ var _ProfileService_serviceDesc = grpc.ServiceDesc{
 			Handler:    _ProfileService_UpdateUserSettings_Handler,
 		},
 		{
+			MethodName: "GetUserAttributes",
+			Handler:    _ProfileService_GetUserAttributes_Handler,
+		},
+		{
+			MethodName: "SetUserAttributes",
+			Handler:    _ProfileService_SetUserAttributes_Handler,
+		},
+		{
 			MethodName: "InviteUser",
 			Handler:    _ProfileService_InviteUser_Handler,
 		},
@@ -2740,6 +3283,20 @@ func (m *UserInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.AuthProviderID) > 0 {
+		i -= len(m.AuthProviderID)
+		copy(dAtA[i:], m.AuthProviderID)
+		i = encodeVarintService(dAtA, i, uint64(len(m.AuthProviderID)))
+		i--
+		dAtA[i] = 0x52
+	}
+	if len(m.IdentityProvider) > 0 {
+		i -= len(m.IdentityProvider)
+		copy(dAtA[i:], m.IdentityProvider)
+		i = encodeVarintService(dAtA, i, uint64(len(m.IdentityProvider)))
+		i--
+		dAtA[i] = 0x4a
+	}
 	if m.IsApproved {
 		i--
 		if m.IsApproved {
@@ -2842,6 +3399,36 @@ func (m *GetUserByEmailRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *GetUserByAuthProviderIDRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetUserByAuthProviderIDRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetUserByAuthProviderIDRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.AuthProviderID) > 0 {
+		i -= len(m.AuthProviderID)
+		copy(dAtA[i:], m.AuthProviderID)
+		i = encodeVarintService(dAtA, i, uint64(len(m.AuthProviderID)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *OrgInfo) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -2921,6 +3508,20 @@ func (m *CreateUserRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.AuthProviderID) > 0 {
+		i -= len(m.AuthProviderID)
+		copy(dAtA[i:], m.AuthProviderID)
+		i = encodeVarintService(dAtA, i, uint64(len(m.AuthProviderID)))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if len(m.IdentityProvider) > 0 {
+		i -= len(m.IdentityProvider)
+		copy(dAtA[i:], m.IdentityProvider)
+		i = encodeVarintService(dAtA, i, uint64(len(m.IdentityProvider)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Email) > 0 {
 		i -= len(m.Email)
 		copy(dAtA[i:], m.Email)
@@ -3068,6 +3669,20 @@ func (m *CreateOrgAndUserRequest_User) MarshalToSizedBuffer(dAtA []byte) (int, e
 	_ = i
 	var l int
 	_ = l
+	if len(m.AuthProviderID) > 0 {
+		i -= len(m.AuthProviderID)
+		copy(dAtA[i:], m.AuthProviderID)
+		i = encodeVarintService(dAtA, i, uint64(len(m.AuthProviderID)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.IdentityProvider) > 0 {
+		i -= len(m.IdentityProvider)
+		copy(dAtA[i:], m.IdentityProvider)
+		i = encodeVarintService(dAtA, i, uint64(len(m.IdentityProvider)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.Email) > 0 {
 		i -= len(m.Email)
 		copy(dAtA[i:], m.Email)
@@ -3362,15 +3977,6 @@ func (m *GetUserSettingsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	_ = i
 	var l int
 	_ = l
-	if len(m.Keys) > 0 {
-		for iNdEx := len(m.Keys) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Keys[iNdEx])
-			copy(dAtA[i:], m.Keys[iNdEx])
-			i = encodeVarintService(dAtA, i, uint64(len(m.Keys[iNdEx])))
-			i--
-			dAtA[i] = 0x12
-		}
-	}
 	if m.ID != nil {
 		{
 			size, err := m.ID.MarshalToSizedBuffer(dAtA[:i])
@@ -3406,23 +4012,15 @@ func (m *GetUserSettingsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Values) > 0 {
-		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Values[iNdEx])
-			copy(dAtA[i:], m.Values[iNdEx])
-			i = encodeVarintService(dAtA, i, uint64(len(m.Values[iNdEx])))
-			i--
-			dAtA[i] = 0x12
+	if m.AnalyticsOptout {
+		i--
+		if m.AnalyticsOptout {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
 		}
-	}
-	if len(m.Keys) > 0 {
-		for iNdEx := len(m.Keys) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Keys[iNdEx])
-			copy(dAtA[i:], m.Keys[iNdEx])
-			i = encodeVarintService(dAtA, i, uint64(len(m.Keys[iNdEx])))
-			i--
-			dAtA[i] = 0xa
-		}
+		i--
+		dAtA[i] = 0x18
 	}
 	return len(dAtA) - i, nil
 }
@@ -3447,23 +4045,17 @@ func (m *UpdateUserSettingsRequest) MarshalToSizedBuffer(dAtA []byte) (int, erro
 	_ = i
 	var l int
 	_ = l
-	if len(m.Values) > 0 {
-		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Values[iNdEx])
-			copy(dAtA[i:], m.Values[iNdEx])
-			i = encodeVarintService(dAtA, i, uint64(len(m.Values[iNdEx])))
-			i--
-			dAtA[i] = 0x1a
+	if m.AnalyticsOptout != nil {
+		{
+			size, err := m.AnalyticsOptout.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintService(dAtA, i, uint64(size))
 		}
-	}
-	if len(m.Keys) > 0 {
-		for iNdEx := len(m.Keys) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Keys[iNdEx])
-			copy(dAtA[i:], m.Keys[iNdEx])
-			i = encodeVarintService(dAtA, i, uint64(len(m.Keys[iNdEx])))
-			i--
-			dAtA[i] = 0x12
-		}
+		i--
+		dAtA[i] = 0x22
 	}
 	if m.ID != nil {
 		{
@@ -3513,6 +4105,144 @@ func (m *UpdateUserSettingsResponse) MarshalToSizedBuffer(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
+func (m *GetUserAttributesRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetUserAttributesRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetUserAttributesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ID != nil {
+		{
+			size, err := m.ID.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintService(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetUserAttributesResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetUserAttributesResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetUserAttributesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.TourSeen {
+		i--
+		if m.TourSeen {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetUserAttributesRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetUserAttributesRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SetUserAttributesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.TourSeen != nil {
+		{
+			size, err := m.TourSeen.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintService(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.ID != nil {
+		{
+			size, err := m.ID.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintService(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetUserAttributesResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetUserAttributesResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SetUserAttributesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func (m *InviteUserRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -3533,6 +4263,13 @@ func (m *InviteUserRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.IdentityProvider) > 0 {
+		i -= len(m.IdentityProvider)
+		copy(dAtA[i:], m.IdentityProvider)
+		i = encodeVarintService(dAtA, i, uint64(len(m.IdentityProvider)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if m.MustCreateUser {
 		i--
 		if m.MustCreateUser {
@@ -3736,6 +4473,14 @@ func (m *UserInfo) Size() (n int) {
 	if m.IsApproved {
 		n += 2
 	}
+	l = len(m.IdentityProvider)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	l = len(m.AuthProviderID)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
 	return n
 }
 
@@ -3746,6 +4491,19 @@ func (m *GetUserByEmailRequest) Size() (n int) {
 	var l int
 	_ = l
 	l = len(m.Email)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	return n
+}
+
+func (m *GetUserByAuthProviderIDRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.AuthProviderID)
 	if l > 0 {
 		n += 1 + l + sovService(uint64(l))
 	}
@@ -3799,6 +4557,14 @@ func (m *CreateUserRequest) Size() (n int) {
 		n += 1 + l + sovService(uint64(l))
 	}
 	l = len(m.Email)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	l = len(m.IdentityProvider)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	l = len(m.AuthProviderID)
 	if l > 0 {
 		n += 1 + l + sovService(uint64(l))
 	}
@@ -3858,6 +4624,14 @@ func (m *CreateOrgAndUserRequest_User) Size() (n int) {
 		n += 1 + l + sovService(uint64(l))
 	}
 	l = len(m.Email)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	l = len(m.IdentityProvider)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
+	}
+	l = len(m.AuthProviderID)
 	if l > 0 {
 		n += 1 + l + sovService(uint64(l))
 	}
@@ -3966,12 +4740,6 @@ func (m *GetUserSettingsRequest) Size() (n int) {
 		l = m.ID.Size()
 		n += 1 + l + sovService(uint64(l))
 	}
-	if len(m.Keys) > 0 {
-		for _, s := range m.Keys {
-			l = len(s)
-			n += 1 + l + sovService(uint64(l))
-		}
-	}
 	return n
 }
 
@@ -3981,17 +4749,8 @@ func (m *GetUserSettingsResponse) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if len(m.Keys) > 0 {
-		for _, s := range m.Keys {
-			l = len(s)
-			n += 1 + l + sovService(uint64(l))
-		}
-	}
-	if len(m.Values) > 0 {
-		for _, s := range m.Values {
-			l = len(s)
-			n += 1 + l + sovService(uint64(l))
-		}
+	if m.AnalyticsOptout {
+		n += 2
 	}
 	return n
 }
@@ -4006,17 +4765,9 @@ func (m *UpdateUserSettingsRequest) Size() (n int) {
 		l = m.ID.Size()
 		n += 1 + l + sovService(uint64(l))
 	}
-	if len(m.Keys) > 0 {
-		for _, s := range m.Keys {
-			l = len(s)
-			n += 1 + l + sovService(uint64(l))
-		}
-	}
-	if len(m.Values) > 0 {
-		for _, s := range m.Values {
-			l = len(s)
-			n += 1 + l + sovService(uint64(l))
-		}
+	if m.AnalyticsOptout != nil {
+		l = m.AnalyticsOptout.Size()
+		n += 1 + l + sovService(uint64(l))
 	}
 	return n
 }
@@ -4030,6 +4781,57 @@ func (m *UpdateUserSettingsResponse) Size() (n int) {
 	if m.OK {
 		n += 2
 	}
+	return n
+}
+
+func (m *GetUserAttributesRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ID != nil {
+		l = m.ID.Size()
+		n += 1 + l + sovService(uint64(l))
+	}
+	return n
+}
+
+func (m *GetUserAttributesResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.TourSeen {
+		n += 2
+	}
+	return n
+}
+
+func (m *SetUserAttributesRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ID != nil {
+		l = m.ID.Size()
+		n += 1 + l + sovService(uint64(l))
+	}
+	if m.TourSeen != nil {
+		l = m.TourSeen.Size()
+		n += 1 + l + sovService(uint64(l))
+	}
+	return n
+}
+
+func (m *SetUserAttributesResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	return n
 }
 
@@ -4057,6 +4859,10 @@ func (m *InviteUserRequest) Size() (n int) {
 	}
 	if m.MustCreateUser {
 		n += 2
+	}
+	l = len(m.IdentityProvider)
+	if l > 0 {
+		n += 1 + l + sovService(uint64(l))
 	}
 	return n
 }
@@ -4125,6 +4931,8 @@ func (this *UserInfo) String() string {
 		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
 		`ProfilePicture:` + fmt.Sprintf("%v", this.ProfilePicture) + `,`,
 		`IsApproved:` + fmt.Sprintf("%v", this.IsApproved) + `,`,
+		`IdentityProvider:` + fmt.Sprintf("%v", this.IdentityProvider) + `,`,
+		`AuthProviderID:` + fmt.Sprintf("%v", this.AuthProviderID) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4135,6 +4943,16 @@ func (this *GetUserByEmailRequest) String() string {
 	}
 	s := strings.Join([]string{`&GetUserByEmailRequest{`,
 		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetUserByAuthProviderIDRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetUserByAuthProviderIDRequest{`,
+		`AuthProviderID:` + fmt.Sprintf("%v", this.AuthProviderID) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4162,6 +4980,8 @@ func (this *CreateUserRequest) String() string {
 		`FirstName:` + fmt.Sprintf("%v", this.FirstName) + `,`,
 		`LastName:` + fmt.Sprintf("%v", this.LastName) + `,`,
 		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
+		`IdentityProvider:` + fmt.Sprintf("%v", this.IdentityProvider) + `,`,
+		`AuthProviderID:` + fmt.Sprintf("%v", this.AuthProviderID) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4197,6 +5017,8 @@ func (this *CreateOrgAndUserRequest_User) String() string {
 		`FirstName:` + fmt.Sprintf("%v", this.FirstName) + `,`,
 		`LastName:` + fmt.Sprintf("%v", this.LastName) + `,`,
 		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
+		`IdentityProvider:` + fmt.Sprintf("%v", this.IdentityProvider) + `,`,
+		`AuthProviderID:` + fmt.Sprintf("%v", this.AuthProviderID) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4275,7 +5097,6 @@ func (this *GetUserSettingsRequest) String() string {
 	}
 	s := strings.Join([]string{`&GetUserSettingsRequest{`,
 		`ID:` + strings.Replace(fmt.Sprintf("%v", this.ID), "UUID", "uuidpb.UUID", 1) + `,`,
-		`Keys:` + fmt.Sprintf("%v", this.Keys) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4285,8 +5106,7 @@ func (this *GetUserSettingsResponse) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&GetUserSettingsResponse{`,
-		`Keys:` + fmt.Sprintf("%v", this.Keys) + `,`,
-		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
+		`AnalyticsOptout:` + fmt.Sprintf("%v", this.AnalyticsOptout) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4297,8 +5117,7 @@ func (this *UpdateUserSettingsRequest) String() string {
 	}
 	s := strings.Join([]string{`&UpdateUserSettingsRequest{`,
 		`ID:` + strings.Replace(fmt.Sprintf("%v", this.ID), "UUID", "uuidpb.UUID", 1) + `,`,
-		`Keys:` + fmt.Sprintf("%v", this.Keys) + `,`,
-		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
+		`AnalyticsOptout:` + strings.Replace(fmt.Sprintf("%v", this.AnalyticsOptout), "BoolValue", "types.BoolValue", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4313,6 +5132,46 @@ func (this *UpdateUserSettingsResponse) String() string {
 	}, "")
 	return s
 }
+func (this *GetUserAttributesRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetUserAttributesRequest{`,
+		`ID:` + strings.Replace(fmt.Sprintf("%v", this.ID), "UUID", "uuidpb.UUID", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetUserAttributesResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetUserAttributesResponse{`,
+		`TourSeen:` + fmt.Sprintf("%v", this.TourSeen) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SetUserAttributesRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SetUserAttributesRequest{`,
+		`ID:` + strings.Replace(fmt.Sprintf("%v", this.ID), "UUID", "uuidpb.UUID", 1) + `,`,
+		`TourSeen:` + strings.Replace(fmt.Sprintf("%v", this.TourSeen), "BoolValue", "types.BoolValue", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SetUserAttributesResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SetUserAttributesResponse{`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *InviteUserRequest) String() string {
 	if this == nil {
 		return "nil"
@@ -4323,6 +5182,7 @@ func (this *InviteUserRequest) String() string {
 		`LastName:` + fmt.Sprintf("%v", this.LastName) + `,`,
 		`OrgID:` + strings.Replace(fmt.Sprintf("%v", this.OrgID), "UUID", "uuidpb.UUID", 1) + `,`,
 		`MustCreateUser:` + fmt.Sprintf("%v", this.MustCreateUser) + `,`,
+		`IdentityProvider:` + fmt.Sprintf("%v", this.IdentityProvider) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4652,6 +5512,70 @@ func (m *UserInfo) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.IsApproved = bool(v != 0)
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentityProvider", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentityProvider = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuthProviderID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuthProviderID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipService(dAtA[iNdEx:])
@@ -4733,6 +5657,88 @@ func (m *GetUserByEmailRequest) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Email = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetUserByAuthProviderIDRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetUserByAuthProviderIDRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetUserByAuthProviderIDRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuthProviderID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuthProviderID = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -5117,6 +6123,70 @@ func (m *CreateUserRequest) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Email = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentityProvider", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentityProvider = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuthProviderID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuthProviderID = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -5531,6 +6601,70 @@ func (m *CreateOrgAndUserRequest_User) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Email = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentityProvider", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentityProvider = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuthProviderID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuthProviderID = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -6236,38 +7370,6 @@ func (m *GetUserSettingsRequest) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowService
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthService
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthService
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Keys = append(m.Keys, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipService(dAtA[iNdEx:])
@@ -6318,11 +7420,11 @@ func (m *GetUserSettingsResponse) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: GetUserSettingsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AnalyticsOptout", wireType)
 			}
-			var stringLen uint64
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowService
@@ -6332,56 +7434,12 @@ func (m *GetUserSettingsResponse) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthService
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthService
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Keys = append(m.Keys, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowService
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthService
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthService
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Values = append(m.Values, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
+			m.AnalyticsOptout = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipService(dAtA[iNdEx:])
@@ -6468,11 +7526,11 @@ func (m *UpdateUserSettingsRequest) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
+		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AnalyticsOptout", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowService
@@ -6482,55 +7540,27 @@ func (m *UpdateUserSettingsRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthService
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return ErrInvalidLengthService
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Keys = append(m.Keys, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			if m.AnalyticsOptout == nil {
+				m.AnalyticsOptout = &types.BoolValue{}
 			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowService
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			if err := m.AnalyticsOptout.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthService
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthService
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Values = append(m.Values, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -6602,6 +7632,334 @@ func (m *UpdateUserSettingsResponse) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.OK = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetUserAttributesRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetUserAttributesRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetUserAttributesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ID", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ID == nil {
+				m.ID = &uuidpb.UUID{}
+			}
+			if err := m.ID.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetUserAttributesResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetUserAttributesResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetUserAttributesResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TourSeen", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TourSeen = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetUserAttributesRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetUserAttributesRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetUserAttributesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ID", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ID == nil {
+				m.ID = &uuidpb.UUID{}
+			}
+			if err := m.ID.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TourSeen", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.TourSeen == nil {
+				m.TourSeen = &types.BoolValue{}
+			}
+			if err := m.TourSeen.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetUserAttributesResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetUserAttributesResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetUserAttributesResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipService(dAtA[iNdEx:])
@@ -6804,6 +8162,38 @@ func (m *InviteUserRequest) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.MustCreateUser = bool(v != 0)
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdentityProvider", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthService
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdentityProvider = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipService(dAtA[iNdEx:])

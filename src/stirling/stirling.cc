@@ -137,13 +137,19 @@ std::unique_ptr<SourceRegistry> CreateProdSourceRegistry() {
       .ConsumeValueOrDie();
 }
 
+// Holds InfoClassManager and DataTable.
+struct SourceOutput {
+  std::vector<InfoClassManager*> info_class_mgrs;
+  std::vector<DataTable*> data_tables;
+};
+
 class StirlingImpl final : public Stirling {
  public:
   explicit StirlingImpl(std::unique_ptr<SourceRegistry> registry);
 
   ~StirlingImpl() override;
 
-  void RegisterUserDebugSignalHandlers() override;
+  void RegisterUserDebugSignalHandlers(int signum) override;
 
   // TODO(oazizi/yzhao): Consider lift this as an interface method into Stirling, making it
   // symmetric with Stop().
@@ -155,7 +161,6 @@ class StirlingImpl final : public Stirling {
   StatusOr<stirlingpb::Publish> GetTracepointInfo(sole::uuid trace_id) override;
   Status RemoveTracepoint(sole::uuid trace_id) override;
   void GetPublishProto(stirlingpb::Publish* publish_pb) override;
-  Status SetSubscription(const stirlingpb::Subscribe& subscribe_proto) override;
   void RegisterDataPushCallback(DataPushCallback f) override { data_push_callback_ = f; }
   void RegisterAgentMetadataCallback(AgentMetadataCallback f) override {
     DCHECK(f != nullptr);
@@ -170,7 +175,7 @@ class StirlingImpl final : public Stirling {
   void Stop() override;
   void WaitForThreadJoin() override;
 
-  void ToggleDebug();
+  void SetDebugLevel(int level);
   void EnablePIDTrace(int pid);
   void DisablePIDTrace(int pid);
 
@@ -179,7 +184,7 @@ class StirlingImpl final : public Stirling {
   Status CreateSourceConnectors();
 
   // Adds a source to Stirling, and updates all state accordingly.
-  Status AddSource(std::unique_ptr<SourceConnector> source, bool dynamic = false);
+  Status AddSource(std::unique_ptr<SourceConnector> source);
 
   // Removes a source and all its info classes from stirling.
   Status RemoveSource(std::string_view source_name);
@@ -205,23 +210,14 @@ class StirlingImpl final : public Stirling {
   std::atomic<bool> running_ = false;
   std::vector<std::unique_ptr<SourceConnector>> sources_ ABSL_GUARDED_BY(info_class_mgrs_lock_);
 
-  // Holds InfoClassManager and DataTable.
-  struct SourceOutput {
-    std::vector<InfoClassManager*> info_class_mgrs;
-    std::vector<DataTable*> data_tables;
-  };
   // TODO(yzhao): Move InfoClassManager objects into SourceConnector, and remove this map.
   absl::flat_hash_map<SourceConnector*, SourceOutput> source_output_map_
       ABSL_GUARDED_BY(info_class_mgrs_lock_);
-
-  std::vector<std::unique_ptr<DataTable>> tables_;
 
   InfoClassManagerVec info_class_mgrs_ ABSL_GUARDED_BY(info_class_mgrs_lock_);
 
   // Lock to protect both info_class_mgrs_ and sources_.
   absl::base_internal::SpinLock info_class_mgrs_lock_;
-
-  std::unique_ptr<PubSubManager> config_;
 
   std::unique_ptr<SourceRegistry> registry_;
 
@@ -239,33 +235,30 @@ class StirlingImpl final : public Stirling {
   absl::base_internal::SpinLock dynamic_trace_status_map_lock_;
   absl::flat_hash_map<sole::uuid, StatusOr<stirlingpb::Publish>> dynamic_trace_status_map_
       ABSL_GUARDED_BY(dynamic_trace_status_map_lock_);
-
-  int debug_level_ = 0;
 };
-
-StirlingImpl::StirlingImpl(std::unique_ptr<SourceRegistry> registry)
-    : config_(std::make_unique<PubSubManager>()), registry_(std::move(registry)) {}
-
-StirlingImpl::~StirlingImpl() { Stop(); }
 
 StirlingImpl* g_stirling_ptr = nullptr;
 
-// Turn on/off the debug flag for all of Stirling.
-void UserSignalHandler(int /* signum */) {
-  if (g_stirling_ptr == nullptr) {
-    return;
-  }
+enum class SignalOpCode {
+  // Reset the opcode. Signal handler will be waiting to receive an opcode.
+  kNone = 0,
 
-  g_stirling_ptr->ToggleDebug();
+  // Set a general debug level for all source connectors.
+  // Source connectors can dump more information according to the specified level.
+  kSetDebugLevel = 1,
+
+  // Specify a PID of interest for tracing. More information for this PID will be dumped.
+  // Only the SocketTracer currently implements this, but in theory other source connectors
+  // could enable PID traces as well.
+  kPIDTrace = 2,
+};
+
+void ProcessSetDebugLevelOpcode(int level) {
+  LOG(INFO) << absl::Substitute("Setting debug level to $0", level);
+  g_stirling_ptr->SetDebugLevel(level);
 }
 
-// Set flags in the Socket Tracer to start tracing the specified PID.
-void UserSignalHandler2(int /* signum */, siginfo_t* info, void* /* context */) {
-  if (g_stirling_ptr == nullptr) {
-    return;
-  }
-
-  int pid = info->si_int;
+void ProcessPIDTraceOpcode(int pid) {
   if (pid >= 0) {
     LOG(INFO) << absl::Substitute("Enabling tracing of PID: $0", pid);
     g_stirling_ptr->EnablePIDTrace(pid);
@@ -276,13 +269,56 @@ void UserSignalHandler2(int /* signum */, siginfo_t* info, void* /* context */) 
   }
 }
 
-void StirlingImpl::RegisterUserDebugSignalHandlers() {
-  g_stirling_ptr = this;
+// To multiplex different actions onto a single signal handler, Stirling uses a simple
+// opcode+value protocol. Stirling expects signals to arrive in pairs:
+//   signal 1: opcode - Chooses what action to perform.
+//   signal 2: value  - An argument for the opcode.
+// For example, to ask stirling to enable PID tracing for PID 33, one would send
+//   1) opcode = 2 (kPIDTrace)
+//   2) value = 33
+//
+// New opcodes can be added to expand the aspects of Stirling one can control via signals.
+//
+// Note that sending an opcode of 0 is special and resets the state. Thus sending 0 will
+// always guarantee that the state machine expects an opcode next.
+//
+// See the stirling_ctrl utility for sending such control messages to stirling;
+// it takes care of managing the protocol.
+void UserSignalHandler(int /* signum */, siginfo_t* info, void* /* context */) {
+  static SignalOpCode opcode = SignalOpCode::kNone;
 
-  // Signal for USR1: Set-up a general debug signal that gets broadcast to all source connectors.
-  // Source connectors can enable logging of debug information as desired.
-  // Trigger this via `kill -USR1`
-  signal(SIGUSR1, UserSignalHandler);
+  if (g_stirling_ptr == nullptr) {
+    return;
+  }
+
+  if (opcode == SignalOpCode::kNone) {
+    opcode = static_cast<SignalOpCode>(info->si_int);
+    return;
+  }
+
+  int value = info->si_int;
+
+  switch (opcode) {
+    case SignalOpCode::kSetDebugLevel:
+      ProcessSetDebugLevelOpcode(value);
+      break;
+    case SignalOpCode::kPIDTrace:
+      ProcessPIDTraceOpcode(value);
+      break;
+    default:
+      LOG(INFO) << absl::Substitute("Unexpected signal opcode: $0", value);
+  }
+
+  opcode = SignalOpCode::kNone;
+}
+
+StirlingImpl::StirlingImpl(std::unique_ptr<SourceRegistry> registry)
+    : registry_(std::move(registry)) {}
+
+StirlingImpl::~StirlingImpl() { Stop(); }
+
+void StirlingImpl::RegisterUserDebugSignalHandlers(int signum) {
+  g_stirling_ptr = this;
 
   // Signal for USR2: This is a PID-based signal that currently sets flags in the Socket Tracer,
   // to enable connection tracing for the particular PID.
@@ -290,10 +326,10 @@ void StirlingImpl::RegisterUserDebugSignalHandlers() {
   // Note that `kill -USR2` will no longer work for this signal. Instead sigqueue must be used
   // to send the signal.
   struct sigaction sigaction_specs = {};
-  sigaction_specs.sa_sigaction = UserSignalHandler2;
+  sigaction_specs.sa_sigaction = UserSignalHandler;
   sigaction_specs.sa_flags = SA_SIGINFO;
   sigemptyset(&sigaction_specs.sa_mask);
-  sigaction(SIGUSR2, &sigaction_specs, NULL);
+  sigaction(signum, &sigaction_specs, NULL);
 }
 
 Status StirlingImpl::Init() {
@@ -307,20 +343,17 @@ Status StirlingImpl::Init() {
   // stirling_wrapper. Figure out a way to detect active probes owned by other processes,
   // in order to skip cleaning up those probes.
   LOG_IF(WARNING, !s.ok()) << absl::Substitute("Kprobe Cleaner failed. Message $0", s.msg());
-  PL_RETURN_IF_ERROR(CreateSourceConnectors());
-  return Status::OK();
-}
 
-Status StirlingImpl::CreateSourceConnectors() {
   if (!registry_) {
     return error::NotFound("Source registry doesn't exist");
   }
-  auto sources = registry_->sources();
-  for (const auto& [name, registry_element] : sources) {
+
+  for (const auto& [name, registry_element] : registry_->sources()) {
     Status s = AddSource(registry_element.create_source_fn(name));
     LOG_IF(DFATAL, !s.ok()) << absl::Substitute(
         "Source Connector (registry name=$0) not instantiated, error: $1", name, s.ToString());
   }
+  LOG(INFO) << "Stirling successfully initialized.";
   return Status::OK();
 }
 
@@ -331,38 +364,37 @@ std::unique_ptr<ConnectorContext> StirlingImpl::GetContext() {
   return std::unique_ptr<ConnectorContext>(new StandaloneContext());
 }
 
-Status StirlingImpl::AddSource(std::unique_ptr<SourceConnector> source, bool dynamic) {
+namespace {
+
+std::vector<DataTable*> GetDataTables(const std::vector<InfoClassManager*>& info_class_mgrs) {
+  std::vector<DataTable*> data_tables;
+  data_tables.reserve(info_class_mgrs.size());
+  for (InfoClassManager* mgr : info_class_mgrs) {
+    data_tables.push_back(mgr->data_table());
+  }
+  return data_tables;
+}
+
+}  // namespace
+
+Status StirlingImpl::AddSource(std::unique_ptr<SourceConnector> source) {
   // Step 1: Init the source.
   PL_RETURN_IF_ERROR(source->Init());
 
   absl::base_internal::SpinLockHolder lock(&info_class_mgrs_lock_);
 
   std::vector<InfoClassManager*> mgrs;
-  mgrs.reserve(source->num_tables());
+  mgrs.reserve(source->table_schemas().size());
 
-  for (uint32_t i = 0; i < source->num_tables(); ++i) {
-    const DataTableSchema& schema = source->TableSchema(i);
+  for (const DataTableSchema& schema : source->table_schemas()) {
     LOG(INFO) << absl::Substitute("Adding info class: [$0/$1]", source->name(), schema.name());
-
-    // Step 2: Create the info class manager.
-    auto mgr = std::make_unique<InfoClassManager>(
-        schema, dynamic ? stirlingpb::DYNAMIC : stirlingpb::STATIC);
-    mgr->SetSourceConnector(source.get(), i);
-
-    // Step 3: Setup the manager.
-    mgr->SetSamplingPeriod(schema.default_sampling_period());
-    mgr->SetPushPeriod(schema.default_push_period());
-
+    auto mgr = std::make_unique<InfoClassManager>(schema);
+    mgr->SetSourceConnector(source.get());
     mgrs.push_back(mgr.get());
-
-    // Step 4: Keep pointers to all the objects
     info_class_mgrs_.push_back(std::move(mgr));
   }
 
-  std::vector<DataTable*> data_tables;
-  // Needs to make sure the required number of DataTable objects are fed to
-  // SourceConnector::TransferData() even if subscription was not specified yet.
-  data_tables.resize(mgrs.size(), nullptr);
+  std::vector<DataTable*> data_tables = GetDataTables(mgrs);
 
   source_output_map_[source.get()] = {std::move(mgrs),
                                       // DataTable objects are created after subscribing.
@@ -468,19 +500,19 @@ void StirlingImpl::DeployDynamicTraceConnector(
                                 timer.ElapsedTime_us() / 1000.0);
 
   // Cache table schema name as source will be moved below.
-  std::string output_name(source->TableSchema(0).name());
+  std::string output_name(source->table_schemas()[0].name());
 
   timer.Start();
   // Next, try adding the source (this actually tries to deploy BPF code).
   // On failure, set status and exit, but do this outside the lock for efficiency reasons.
-  RETURN_IF_ERROR(AddSource(std::move(source), /*dynamic*/ true));
+  RETURN_IF_ERROR(AddSource(std::move(source)));
   LOG(INFO) << absl::Substitute("DynamicTrace [$0]: Deployed BPF program in $1 ms.", trace_id.str(),
                                 timer.ElapsedTime_us() / 1000.0);
 
   stirlingpb::Publish publication;
   {
     absl::base_internal::SpinLockHolder lock(&info_class_mgrs_lock_);
-    config_->PopulatePublishProto(&publication, info_class_mgrs_, output_name);
+    PopulatePublishProto(&publication, info_class_mgrs_, output_name);
   }
 
   absl::base_internal::SpinLockHolder lock(&dynamic_trace_status_map_lock_);
@@ -579,54 +611,7 @@ Status StirlingImpl::RemoveTracepoint(sole::uuid trace_id) {
 
 void StirlingImpl::GetPublishProto(stirlingpb::Publish* publish_pb) {
   absl::base_internal::SpinLockHolder lock(&info_class_mgrs_lock_);
-  config_->PopulatePublishProto(publish_pb, info_class_mgrs_);
-}
-
-// Assumes info_class_mgrs are ordered by source_table_num, which was guaranteed in AddSource().
-std::vector<DataTable*> GetDataTables(const std::vector<InfoClassManager*>& info_class_mgrs) {
-  std::vector<DataTable*> data_tables;
-  data_tables.reserve(info_class_mgrs.size());
-
-  for (InfoClassManager* mgr : info_class_mgrs) {
-    if (mgr->subscribed()) {
-      data_tables.push_back(mgr->data_table());
-    } else {
-      data_tables.push_back(nullptr);
-    }
-  }
-  return data_tables;
-}
-
-Status StirlingImpl::SetSubscription(const stirlingpb::Subscribe& subscribe_proto) {
-  // Acquire lock to update info_class_mgrs_.
-  absl::base_internal::SpinLockHolder lock(&info_class_mgrs_lock_);
-
-  // Last append before clearing tables from old subscriptions.
-  for (const auto& mgr : info_class_mgrs_) {
-    if (mgr->subscribed()) {
-      mgr->PushData(data_push_callback_);
-    }
-  }
-  tables_.clear();
-
-  // Update schemas based on the subscribe_proto.
-  PL_CHECK_OK(config_->UpdateSchemaFromSubscribe(subscribe_proto, info_class_mgrs_));
-
-  // Generate the tables required based on subscribed Info Classes.
-  for (const auto& mgr : info_class_mgrs_) {
-    if (mgr->subscribed()) {
-      auto data_table = std::make_unique<DataTable>(mgr->Schema());
-      mgr->SetDataTable(data_table.get());
-      tables_.push_back(std::move(data_table));
-    }
-  }
-
-  // Update mapping from SourceConnector to DataTable objects.
-  for (auto& [source, source_output] : source_output_map_) {
-    source_output.data_tables = GetDataTables(source_output.info_class_mgrs);
-  }
-
-  return Status::OK();
+  PopulatePublishProto(publish_pb, info_class_mgrs_);
 }
 
 // Main call to start the data collection.
@@ -688,30 +673,18 @@ static constexpr std::chrono::milliseconds kMinSleepDuration{1};
 static constexpr std::chrono::milliseconds kMaxSleepDuration{1000};
 
 // Helper function: Figure out when to wake up next.
-std::chrono::milliseconds TimeUntilNextTick(const InfoClassManagerVec& info_class_mgrs) {
+std::chrono::milliseconds TimeUntilNextTick(
+    const absl::flat_hash_map<SourceConnector*, SourceOutput> source_output_map) {
   // The amount to sleep depends on when the earliest Source needs to be sampled again.
   // Do this to avoid burning CPU cycles unnecessarily
-
-  auto now = std::chrono::steady_clock::now();
+  auto now = px::chrono::coarse_steady_clock::now();
 
   // Worst case, wake-up every so often.
   // This is important if there are no subscribed info classes, to avoid sleeping eternally.
   auto wakeup_time = now + kMaxSleepDuration;
-
-  for (const auto& mgr : info_class_mgrs) {
-    if (mgr->subscribed()) {
-      wakeup_time = std::min(wakeup_time, mgr->NextPushTime());
-      const SourceConnector* source = mgr->source();
-      if (source->output_multi_tables()) {
-        // Note that the same SourceConnector could be examined multiple times for the associated
-        // InfoClassManager objects, but that does not affect the result.
-        wakeup_time = std::min(wakeup_time, source->sample_push_mgr().NextSamplingTime());
-      } else {
-        // If the SourceConnector can output to multiple data tables, then the sampling frequency is
-        // managed by the SourceConnector, not InfoClassManager.
-        wakeup_time = std::min(wakeup_time, mgr->NextSamplingTime());
-      }
-    }
+  for (const auto& [source, output] : source_output_map) {
+    wakeup_time = std::min(wakeup_time, source->sampling_freq_mgr().next());
+    wakeup_time = std::min(wakeup_time, source->push_freq_mgr().next());
   }
 
   return std::chrono::duration_cast<std::chrono::milliseconds>(wakeup_time - now);
@@ -721,6 +694,25 @@ void SleepForDuration(std::chrono::milliseconds sleep_duration) {
   if (sleep_duration > kMinSleepDuration) {
     std::this_thread::sleep_for(sleep_duration);
   }
+}
+
+// Returns true if any of the input tables are beyond the threshold.
+bool DataExceedsThreshold(const std::vector<DataTable*>& data_tables) {
+  // Data push threshold, based on percentage of buffer that is filled.
+  constexpr uint32_t kDefaultOccupancyPctThreshold = 100;
+
+  // Data push threshold, based number of records after which a push.
+  constexpr uint32_t kDefaultOccupancyThreshold = 1024;
+
+  for (const auto* data_table : data_tables) {
+    if (static_cast<uint32_t>(100 * data_table->OccupancyPct()) > kDefaultOccupancyPctThreshold) {
+      return true;
+    }
+    if (data_table->Occupancy() > kDefaultOccupancyThreshold) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -759,29 +751,17 @@ void StirlingImpl::RunCore() {
       // Run through every SourceConnector and InfoClassManager being managed.
       for (auto& [source, output] : source_output_map_) {
         // Phase 1: Probe each source for its data.
-        if (source->output_multi_tables()) {
-          if (source->sample_push_mgr().SamplingRequired()) {
-            source->TransferData(ctx.get(), output.data_tables);
-          }
-        } else {
-          // TODO(yzhao): Reduce sampling periods if we are dropping data.
-          for (const auto& mgr : output.info_class_mgrs) {
-            if (mgr->subscribed() && mgr->SamplingRequired()) {
-              mgr->SampleData(ctx.get());
-            }
-          }
+        if (source->sampling_freq_mgr().Expired()) {
+          source->TransferData(ctx.get(), output.data_tables);
         }
-
         // Phase 2: Push Data upstream.
-        for (auto* mgr : output.info_class_mgrs) {
-          if (mgr->subscribed() && mgr->PushRequired()) {
-            mgr->PushData(data_push_callback_);
-          }
+        if (source->push_freq_mgr().Expired() || DataExceedsThreshold(output.data_tables)) {
+          source->PushData(data_push_callback_, output.data_tables);
         }
       }
 
       // Figure out how long to sleep.
-      sleep_duration = TimeUntilNextTick(info_class_mgrs_);
+      sleep_duration = TimeUntilNextTick(source_output_map_);
     }
 
     SleepForDuration(sleep_duration);
@@ -820,13 +800,11 @@ void StirlingImpl::Stop() {
   }
 }
 
-void StirlingImpl::ToggleDebug() {
-  debug_level_ = (debug_level_ + 1) % 2;
-
+void StirlingImpl::SetDebugLevel(int level) {
   // Lock not really required, but compiler is making sure we're safe.
   absl::base_internal::SpinLockHolder lock(&info_class_mgrs_lock_);
   for (auto& s : sources_) {
-    s->SetDebugLevel(debug_level_);
+    s->SetDebugLevel(level);
   }
 }
 

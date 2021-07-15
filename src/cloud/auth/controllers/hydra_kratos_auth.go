@@ -21,15 +21,18 @@ package controllers
 import (
 	"context"
 
+	"px.dev/pixie/src/cloud/profile/controller/idmanager"
 	"px.dev/pixie/src/cloud/shared/idprovider"
 )
 
 func transformKratosUserInfoToUserInfo(kratosUser *idprovider.KratosUserInfo) (*UserInfo, error) {
 	// If user does not exist in Auth0, then create a new user if specified.
 	u := &UserInfo{
-		Email:    kratosUser.Email,
-		PLUserID: kratosUser.PLUserID,
-		PLOrgID:  kratosUser.PLOrgID,
+		Email:            kratosUser.Email,
+		PLUserID:         kratosUser.PLUserID,
+		PLOrgID:          kratosUser.PLOrgID,
+		IdentityProvider: "kratos",
+		AuthProviderID:   kratosUser.KratosID,
 	}
 	return u, nil
 }
@@ -39,11 +42,13 @@ type HydraKratosUserClient interface {
 	GetUserIDFromToken(ctx context.Context, token string) (string, error)
 	GetUserInfo(ctx context.Context, userID string) (*idprovider.KratosUserInfo, error)
 	UpdateUserInfo(ctx context.Context, userID string, kratosInfo *idprovider.KratosUserInfo) (*idprovider.KratosUserInfo, error)
+	CreateInviteLinkForIdentity(ctx context.Context, req *idmanager.CreateInviteLinkForIdentityRequest) (*idmanager.CreateInviteLinkForIdentityResponse, error)
+	CreateIdentity(ctx context.Context, email string) (*idmanager.CreateIdentityResponse, error)
 }
 
 // HydraKratosConnector implements the AuthProvider interface for Hydra + Kratos.
 type HydraKratosConnector struct {
-	client HydraKratosUserClient
+	Client HydraKratosUserClient
 }
 
 // NewHydraKratosConnector provides an implementation of an HydraKratosConnector.
@@ -57,12 +62,12 @@ func NewHydraKratosConnector() (*HydraKratosConnector, error) {
 
 // GetUserIDFromToken returns the UserID for the particular token.
 func (a *HydraKratosConnector) GetUserIDFromToken(token string) (string, error) {
-	return a.client.GetUserIDFromToken(context.Background(), token)
+	return a.Client.GetUserIDFromToken(context.Background(), token)
 }
 
 // GetUserInfo returns the UserInfo for this userID.
 func (a *HydraKratosConnector) GetUserInfo(userID string) (*UserInfo, error) {
-	kratosInfo, err := a.client.GetUserInfo(context.Background(), userID)
+	kratosInfo, err := a.Client.GetUserInfo(context.Background(), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,12 +78,35 @@ func (a *HydraKratosConnector) GetUserInfo(userID string) (*UserInfo, error) {
 // SetPLMetadata sets the pixielabs related metadata in Kratos.
 func (a *HydraKratosConnector) SetPLMetadata(userID, plOrgID, plUserID string) error {
 	// Grab the original UserInfo.
-	kratosInfo, err := a.client.GetUserInfo(context.Background(), userID)
+	kratosInfo, err := a.Client.GetUserInfo(context.Background(), userID)
 	if err != nil {
 		return err
 	}
 	kratosInfo.PLOrgID = plOrgID
 	kratosInfo.PLUserID = plUserID
-	_, err = a.client.UpdateUserInfo(context.Background(), userID, kratosInfo)
+	_, err = a.Client.UpdateUserInfo(context.Background(), userID, kratosInfo)
 	return err
+}
+
+// CreateIdentity creates an identity for the passed in email.
+func (a *HydraKratosConnector) CreateIdentity(email string) (*CreateIdentityResponse, error) {
+	resp, err := a.Client.CreateIdentity(context.Background(), email)
+	if err != nil {
+		return nil, err
+	}
+	return &CreateIdentityResponse{
+		IdentityProvider: resp.IdentityProvider,
+		AuthProviderID:   resp.AuthProviderID,
+	}, nil
+}
+
+// CreateInviteLink takes the auth provider ID for a user and creates an Invite Link for that user.
+func (a *HydraKratosConnector) CreateInviteLink(authProviderID string) (*CreateInviteLinkResponse, error) {
+	ident, err := a.Client.CreateInviteLinkForIdentity(context.Background(), &idmanager.CreateInviteLinkForIdentityRequest{
+		AuthProviderID: authProviderID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &CreateInviteLinkResponse{InviteLink: ident.InviteLink}, nil
 }

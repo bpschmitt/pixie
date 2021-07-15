@@ -16,6 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { gql, useMutation, useQuery } from '@apollo/client';
 import {
   makeStyles,
   Theme,
@@ -27,17 +28,13 @@ import TableBody from '@material-ui/core/TableBody';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import * as React from 'react';
-import { useOrgUsers, useUserInfo } from '@pixie-labs/api-react';
+
+import { GQLUserInfo } from 'app/types/schema';
 import {
   AdminTooltip, StyledTableCell, StyledTableHeaderCell, StyledRightTableCell,
 } from './utils';
 
-interface UserDisplay {
-  id: string;
-  name: string;
-  email: string;
-  isApproved: boolean;
-}
+type UserDisplay = Pick<GQLUserInfo, 'id' | 'name' | 'email' | 'isApproved'>;
 
 interface UserRowProps {
   user: UserDisplay;
@@ -59,7 +56,20 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
 export const UserRow: React.FC<UserRowProps> = ({ user }) => {
   const classes = useStyles();
 
-  const [{ updateUserInfo }] = useUserInfo();
+  const [updateUserInfo] = useMutation<
+  { UpdateUserPermissions: UserDisplay }, { id: string, isApproved: boolean }
+  >(
+    gql`
+      mutation UpdateUserApproval ($id: ID!, $isApproved: Boolean) {
+        UpdateUserPermissions(userID: $id, userPermissions: {isApproved: $isApproved}) {
+          id
+          name
+          email
+          isApproved
+        }
+      }
+    `,
+  );
 
   return (
     <TableRow key={user.email}>
@@ -71,7 +81,17 @@ export const UserRow: React.FC<UserRowProps> = ({ user }) => {
             <div>
               <Button
                 onClick={() => {
-                  updateUserInfo(user.id, true);
+                  updateUserInfo({
+                    optimisticResponse: {
+                      UpdateUserPermissions: {
+                        id: user.id,
+                        name: user.name,
+                        email: user.email,
+                        isApproved: true,
+                      },
+                    },
+                    variables: { id: user.id, isApproved: true },
+                  });
                 }}
                 className={classes.approveButton}
                 disabled={user.isApproved}
@@ -89,7 +109,21 @@ export const UserRow: React.FC<UserRowProps> = ({ user }) => {
 };
 
 export const UsersTable: React.FC = () => {
-  const [users, loading, error] = useOrgUsers();
+  const { data, loading, error } = useQuery<{ orgUsers: UserDisplay[] }>(
+    gql`
+      query getUsersForCurrentOrg{
+        orgUsers {
+          id
+          name
+          email
+          isApproved
+        }
+      }
+    `,
+    { pollInterval: 60000 },
+  );
+
+  const users = data?.orgUsers;
   const classes = useStyles();
 
   if (loading) {

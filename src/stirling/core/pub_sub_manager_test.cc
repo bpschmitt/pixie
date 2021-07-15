@@ -67,8 +67,6 @@ const char* kInfoClass0 = R"(
     tabletized: false
     tabletization_key: 18446744073709551615
   }
-  sampling_period_millis: 100
-  push_period_millis: 1000
 )";
 
 const char* kInfoClass1 = R"(
@@ -99,9 +97,6 @@ const char* kInfoClass1 = R"(
     tabletized: false
     tabletization_key: 18446744073709551615
   }
-  sampling_period_millis: 100
-  push_period_millis: 1000
-  type: DYNAMIC
 )";
 
 // A test source connector to be used for testing.
@@ -115,9 +110,7 @@ class TestSourceConnector : public SourceConnector {
       {"io_percentage", "IO percentage", DataType::FLOAT64, SemanticType::ST_NONE,
        PatternType::METRIC_GAUGE}};
 
-  static constexpr auto kTable =
-      DataTableSchema("cpu", "CPU usage metrics", kElements, std::chrono::milliseconds{100},
-                      std::chrono::milliseconds{1000});
+  static constexpr auto kTable = DataTableSchema("cpu", "CPU usage metrics", kElements);
   static constexpr auto kTables = MakeArray(kTable);
 
   static std::unique_ptr<SourceConnector> Create(std::string_view name) {
@@ -126,8 +119,8 @@ class TestSourceConnector : public SourceConnector {
 
   Status InitImpl() override { return Status::OK(); }
   Status StopImpl() override { return Status::OK(); }
-  void TransferDataImpl(ConnectorContext* /* ctx */, uint32_t /* table_num */,
-                        DataTable* /* data_table */) override{};
+  void TransferDataImpl(ConnectorContext* /* ctx */,
+                        const std::vector<DataTable*>& /* data_tables */) override{};
 
  protected:
   explicit TestSourceConnector(std::string_view name) : SourceConnector(name, kTables) {}
@@ -141,9 +134,7 @@ class TestSourceConnector2 : public SourceConnector {
       {"b", "", DataType::FLOAT64, SemanticType::ST_NONE, PatternType::METRIC_GAUGE},
       {"c", "", DataType::FLOAT64, SemanticType::ST_NONE, PatternType::METRIC_GAUGE}};
 
-  static constexpr auto kTable =
-      DataTableSchema("my_table", "Mine, mine, mine!", kElements, std::chrono::milliseconds{100},
-                      std::chrono::milliseconds{1000});
+  static constexpr auto kTable = DataTableSchema("my_table", "Mine, mine, mine!", kElements);
   static constexpr auto kTables = MakeArray(kTable);
 
   static std::unique_ptr<SourceConnector> Create(std::string_view name) {
@@ -152,8 +143,8 @@ class TestSourceConnector2 : public SourceConnector {
 
   Status InitImpl() override { return Status::OK(); }
   Status StopImpl() override { return Status::OK(); }
-  void TransferDataImpl(ConnectorContext* /* ctx */, uint32_t /* table_num */,
-                        DataTable* /* data_table */) override{};
+  void TransferDataImpl(ConnectorContext* /* ctx */,
+                        const std::vector<DataTable*>& /* data_tables */) override{};
 
  protected:
   explicit TestSourceConnector2(std::string_view name) : SourceConnector(name, kTables) {}
@@ -167,7 +158,7 @@ class PubSubManagerTest : public ::testing::Test {
       std::string name = "source0";
       std::unique_ptr<SourceConnector> source = TestSourceConnector::Create(name);
       auto info_class_mgr = std::make_unique<InfoClassManager>(TestSourceConnector::kTable);
-      info_class_mgr->SetSourceConnector(source.get(), /* table_num */ 0);
+      info_class_mgr->SetSourceConnector(source.get());
       info_class_mgrs_.push_back(std::move(info_class_mgr));
       sources_.push_back(std::move(source));
     }
@@ -175,17 +166,13 @@ class PubSubManagerTest : public ::testing::Test {
     {
       std::string name = "source1";
       std::unique_ptr<SourceConnector> source = TestSourceConnector2::Create(name);
-      auto info_class_mgr =
-          std::make_unique<InfoClassManager>(TestSourceConnector2::kTable, stirlingpb::DYNAMIC);
-      info_class_mgr->SetSourceConnector(source.get(), /* table_num */ 0);
+      auto info_class_mgr = std::make_unique<InfoClassManager>(TestSourceConnector2::kTable);
+      info_class_mgr->SetSourceConnector(source.get());
       info_class_mgrs_.push_back(std::move(info_class_mgr));
       sources_.push_back(std::move(source));
     }
-
-    pub_sub_manager_ = std::make_unique<PubSubManager>();
   }
   std::vector<std::unique_ptr<SourceConnector>> sources_;
-  std::unique_ptr<PubSubManager> pub_sub_manager_;
   InfoClassManagerVec info_class_mgrs_;
 };
 
@@ -195,7 +182,7 @@ class PubSubManagerTest : public ::testing::Test {
 TEST_F(PubSubManagerTest, publish_test) {
   // Publish info classes using proto message.
   stirlingpb::Publish actual_publish_pb;
-  pub_sub_manager_->PopulatePublishProto(&actual_publish_pb, info_class_mgrs_);
+  PopulatePublishProto(&actual_publish_pb, info_class_mgrs_);
 
   // Set expectations for the publish message.
   stirlingpb::Publish expected_publish_pb;
@@ -213,7 +200,7 @@ TEST_F(PubSubManagerTest, publish_test) {
 TEST_F(PubSubManagerTest, partial_publish_test) {
   // Publish info classes using proto message.
   stirlingpb::Publish actual_publish_pb;
-  pub_sub_manager_->PopulatePublishProto(&actual_publish_pb, info_class_mgrs_, "cpu");
+  PopulatePublishProto(&actual_publish_pb, info_class_mgrs_, "cpu");
 
   // Set expectations for the publish message.
   stirlingpb::Publish expected_publish_pb;
@@ -224,72 +211,6 @@ TEST_F(PubSubManagerTest, partial_publish_test) {
   info_class->set_id(actual_publish_pb.published_info_classes(0).id());
 
   EXPECT_TRUE(MessageDifferencer::Equals(actual_publish_pb, expected_publish_pb));
-}
-
-// This test validates that the InfoClassManager objects have their subscriptions
-// updated after the PubSubManager reads a subscribe message (from an agent). The
-// subscribe message is created from the Publish proto message.
-TEST_F(PubSubManagerTest, subscribe_test) {
-  // Get publication.
-  stirlingpb::Publish publish_pb;
-  pub_sub_manager_->PopulatePublishProto(&publish_pb, info_class_mgrs_);
-
-  // Send subscription.
-  stirlingpb::Subscribe subscribe_pb = SubscribeToAllInfoClasses(publish_pb);
-  ASSERT_OK(pub_sub_manager_->UpdateSchemaFromSubscribe(subscribe_pb, info_class_mgrs_));
-
-  // Verify updated subscriptions.
-  for (auto& info_class_mgr : info_class_mgrs_) {
-    EXPECT_TRUE(info_class_mgr->subscribed());
-  }
-}
-
-TEST_F(PubSubManagerTest, partial_subscribe_test) {
-  // Get publication.
-  stirlingpb::Publish publish_pb;
-  pub_sub_manager_->PopulatePublishProto(&publish_pb, info_class_mgrs_);
-
-  // Send subscription.
-  stirlingpb::Subscribe subscribe_pb = SubscribeToInfoClass(publish_pb, "my_table");
-  ASSERT_OK(pub_sub_manager_->UpdateSchemaFromSubscribe(subscribe_pb, info_class_mgrs_));
-
-  // Verify updated subscriptions.
-  ASSERT_EQ(info_class_mgrs_.size(), 2);
-  EXPECT_FALSE(info_class_mgrs_[0]->subscribed());
-  EXPECT_TRUE(info_class_mgrs_[1]->subscribed());
-}
-
-TEST_F(PubSubManagerTest, delta_subscribe_test) {
-  // Get publication.
-  stirlingpb::Publish publish_pb;
-  pub_sub_manager_->PopulatePublishProto(&publish_pb, info_class_mgrs_);
-
-  // Split the publication into subsciption pieces (one per info class).
-  std::vector<stirlingpb::Subscribe> subs;
-  for (const auto& p : publish_pb.published_info_classes()) {
-    stirlingpb::Publish partial_pub;
-    auto* info_class = partial_pub.add_published_info_classes();
-    info_class->CopyFrom(p);
-
-    subs.push_back(SubscribeToAllInfoClasses(partial_pub));
-  }
-  ASSERT_EQ(subs.size(), 2);
-
-  // Perform first delta subscription.
-  ASSERT_OK(pub_sub_manager_->UpdateSchemaFromSubscribe(subs[1], info_class_mgrs_));
-
-  // Verify updated subscriptions.
-  ASSERT_EQ(info_class_mgrs_.size(), 2);
-  EXPECT_FALSE(info_class_mgrs_[0]->subscribed());
-  EXPECT_TRUE(info_class_mgrs_[1]->subscribed());
-
-  // Perform second delta subscription.
-  ASSERT_OK(pub_sub_manager_->UpdateSchemaFromSubscribe(subs[0], info_class_mgrs_));
-
-  // Verify updated subscriptions.
-  ASSERT_EQ(info_class_mgrs_.size(), 2);
-  EXPECT_TRUE(info_class_mgrs_[0]->subscribed());
-  EXPECT_TRUE(info_class_mgrs_[1]->subscribed());
 }
 
 }  // namespace stirling

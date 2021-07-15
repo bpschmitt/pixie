@@ -38,19 +38,26 @@ message AuthenticatedUserInfo {
 }
 
 service AuthService {
-  // Performs a login based on auth0 credentials and returns an opaque JWT identifier for the user.
+  // Performs a login based on OAuth credentials and returns an opaque JWT identifier for the user.
   rpc Login(LoginRequest) returns (LoginReply);
-  // Performs a signup based on auth0 credentials and returns an opaque JWT identifier for the user.
+  // Performs a signup based on OAuth credentials and returns an opaque JWT identifier for the user.
   rpc Signup(SignupRequest) returns (SignupReply);
   // Takes an opaque identifier (from above) and produces a token with user details.
   rpc GetAugmentedToken(GetAugmentedAuthTokenRequest) returns (GetAugmentedAuthTokenResponse);
   // Takes an API key and produces a token with user details.
   rpc GetAugmentedTokenForAPIKey(GetAugmentedTokenForAPIKeyRequest) returns (GetAugmentedTokenForAPIKeyResponse);
+  // Create a new account for the user's org and return an invite link.
+  rpc InviteUser(InviteUserRequest) returns (InviteUserResponse);
+  // Create a new org, create a new user, then return an invite link for that user.
+  rpc CreateOrgAndInviteUser(CreateOrgAndInviteUserRequest) returns (CreateOrgAndInviteUserResponse);
 }
 
 message LoginRequest {
-  // The auth0 access token.
+  // The OAuth access token.
   string access_token = 1;
+  // The OIDC id_token if the auth provider sends it. If the auth provider doesn't, should be empty string.
+  // Used to propagate the claims of the user from the OAuth provider in a non-fungible manner.
+  string id_token = 5;
   // Automatically create the user if they don't exist.
   bool create_user_if_not_exists = 3;
   // If the account is a Pixie Support account, login with access to the given org. Otherwise, this field is ignored.
@@ -79,8 +86,11 @@ message LoginReply {
 }
 
 message SignupRequest {
-  // The auth0 access token.
+  // The OAuth access token.
   string access_token = 1;
+  // The OIDC id_token if the auth provider sends it. If the auth provider doesn't, should be empty string.
+  // Used to propagate the claims of the user from the OAuth provider in a non-fungible manner.
+  string id_token = 3;
   reserved 2;
 }
 
@@ -127,6 +137,38 @@ message GetAugmentedTokenForAPIKeyResponse {
   string token = 1;
   // When this login expires.
   int64 expires_at = 2;
+}
+
+message InviteUserRequest {
+	string email = 1;
+	string first_name = 2;
+	string last_name = 3;
+
+  // The ID of the organization to create the user for.
+  px.uuidpb.UUID org_id = 4 [(gogoproto.customname) = "OrgID"];
+}
+
+message InviteUserResponse {
+	string invite_link = 1;
+}
+
+message CreateOrgAndInviteUserRequest {
+  message Org {
+    string org_name = 1;
+    string domain_name = 2;
+  }
+  message User {
+    string username = 1;
+    string first_name = 2;
+    string last_name = 3;
+    string email = 4;
+  }
+  Org org = 1;
+  User user = 2;
+}
+
+message CreateOrgAndInviteUserResponse {
+	string invite_link = 1;
 }
 
 //

@@ -16,18 +16,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-# Grab bin data.
-go get -u github.com/go-bindata/go-bindata/...
-
 # Update the schema assets.
-go generate
+go-bindata -modtime=1 -ignore=\.go -ignore=\.sh -pkg=complete -o=complete/bindata.gen.go .
+go-bindata -modtime=1 -ignore=\.go -ignore=\.sh -ignore=^auth_schema.graphql -pkg=noauth -o=noauth/bindata.gen.go .
 
-# The following assumes a few things:
-# - yarn appears in $PATH (likely from running `npm i -g yarn` after getting NodeJS set up)
-# - The package `graphql-schema-typescript` still has carriage returns in its bin script, breaking it on not-Windows.
-# - `yarn install` was already run in //src/ui
-# - The environment running this script can run Bash (if the top of this file is any indication, it can).
-schemaRoot="$(cd "$(dirname "$0")" && pwd)" # dirname $0 can come back as just `.`, resolve it to a real path.
-uiRoot="${schemaRoot}/../../../../ui"
-pushd "${uiRoot}" && yarn workspace @pixie-labs/api regenerate_graphql_schema
-popd && cp "${uiRoot}/packages/pixie-api/src/types/schema.d.ts" "${schemaRoot}/schema.d.ts"
+tot=$(bazel info workspace)
+pushd "${tot}/src/ui"
+# Note: this _should_ be schema.d.ts, not schema.ts. However, since we build the UI in isolatedModules mode, we must
+# also use normal enums instead of const enums (see https://www.typescriptlang.org/tsconfig#isolatedModules).
+# A strict declarations file (.d.ts) can't export values (like normal enums), so we must rename the file as well.
+yarn graphql-schema-typescript generate-ts "${tot}/src/cloud/api/controller/schema" --output src/types/schema.ts
+sed -i 's/export const enum/export enum/g' src/types/schema.ts
+popd

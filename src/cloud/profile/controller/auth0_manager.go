@@ -35,5 +35,20 @@ func NewAuth0Manager() (*Auth0Manager, error) {
 
 // CreateInviteLink implements the idmanager.Manager interface. We have yet to implement this flow so it fails in the mean time.
 func (c *Auth0Manager) CreateInviteLink(context.Context, *idmanager.CreateInviteLinkRequest) (*idmanager.CreateInviteLinkResponse, error) {
-	return nil, errors.New("pixie's Auth0 implementation does not support InviteLinks yet")
+	return nil, errors.New("pixie's Auth0 implementation does not support generating InviteLinks")
+}
+
+// CreateInviteLinkForIdentity sits here just to warn users that we don't implement this for Auth0.
+func (c *Auth0Manager) CreateInviteLinkForIdentity(context.Context, *idmanager.CreateInviteLinkForIdentityRequest) (*idmanager.CreateInviteLinkForIdentityResponse, error) {
+	return nil, errors.New("pixie's Auth0 implementation does not support generating InviteLinks")
+}
+
+// CreateIdentity sits here just to warn users that we don't implement this for Auth0.
+func (c *Auth0Manager) CreateIdentity(context.Context, string) (*idmanager.CreateIdentityResponse, error) {
+	return nil, errors.New("pixie's Auth0 implementation does not support creating identities")
+}
+
+// SetPLMetadata is not implemented for auth0.
+func (c *Auth0Manager) SetPLMetadata(userID, plOrgID, plUserID string) error {
+	return errors.New("auth0 not supported")
 }

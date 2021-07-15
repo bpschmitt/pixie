@@ -37,25 +37,23 @@ func init() {
 	pflag.String("auth0_client_secret", "", "Auth0 client secret")
 }
 
-// UserInfo contains all the info about a user. It's not tied to any AuthProvider.
-type UserInfo struct {
-	Email     string
-	FirstName string
-	LastName  string
-	Name      string
-	Picture   string
-	PLUserID  string
-	PLOrgID   string
+func getIdentityProvider(auth0 *auth0UserInfo) string {
+	if len(auth0.Identities) != 1 {
+		return ""
+	}
+	return auth0.Identities[0].Provider
 }
 
 func transformAuth0UserInfoToUserInfo(auth0 *auth0UserInfo, clientID string) (*UserInfo, error) {
 	// If user does not exist in Auth0, then create a new user if specified.
 	u := &UserInfo{
-		Email:     auth0.Email,
-		FirstName: auth0.FirstName,
-		LastName:  auth0.LastName,
-		Name:      auth0.Name,
-		Picture:   auth0.Picture,
+		Email:            auth0.Email,
+		FirstName:        auth0.FirstName,
+		LastName:         auth0.LastName,
+		Name:             auth0.Name,
+		Picture:          auth0.Picture,
+		IdentityProvider: getIdentityProvider(auth0),
+		AuthProviderID:   auth0.UserID,
 	}
 	if !(auth0.AppMetadata == nil || auth0.AppMetadata[clientID] == nil) {
 		u.PLUserID = auth0.AppMetadata[clientID].PLUserID
@@ -70,6 +68,10 @@ type auth0UserMetadata struct {
 	PLOrgID  string `json:"pl_org_id,omitempty"`
 }
 
+type auth0Identity struct {
+	Provider string `json:"provider,omitempty"`
+}
+
 // auth0UserInfo tracks the returned auth0 info.
 type auth0UserInfo struct {
 	Email       string                        `json:",omitempty"`
@@ -80,6 +82,7 @@ type auth0UserInfo struct {
 	Picture     string                        `json:",omitempty"`
 	Sub         string                        `json:"sub,omitempty"`
 	AppMetadata map[string]*auth0UserMetadata `json:"app_metadata,omitempty"`
+	Identities  []*auth0Identity              `json:"identities,omitempty"`
 }
 
 // Auth0Config is the config data required for Auth0.
@@ -298,4 +301,14 @@ func (a *Auth0Connector) SetPLMetadata(userID, plOrgID, plUserID string) error {
 		return fmt.Errorf("bad response from auth0: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// CreateInviteLink implements the AuthProvider interface, but we don't support this functionatlity with Auth0 at the time.
+func (a *Auth0Connector) CreateInviteLink(authProviderID string) (*CreateInviteLinkResponse, error) {
+	return nil, errors.New("pixie's Auth0 implementation does not support inviting users with InviteLinks")
+}
+
+// CreateIdentity implements the AuthProvider interface, but we don't support this functionatlity with Auth0 at the time.
+func (a *Auth0Connector) CreateIdentity(string) (*CreateIdentityResponse, error) {
+	return nil, errors.New("pixie's Auth0 implementation does not support creating identities")
 }

@@ -33,7 +33,7 @@ namespace stirling {
 using types::ColumnWrapper;
 using types::DataType;
 
-DataTable::DataTable(const DataTableSchema& schema) : table_schema_(schema) {}
+DataTable::DataTable(uint64_t id, const DataTableSchema& schema) : id_(id), table_schema_(schema) {}
 
 void DataTable::InitBuffers(types::ColumnWrapperRecordBatch* record_batch_ptr) {
   DCHECK(record_batch_ptr != nullptr);
@@ -86,7 +86,7 @@ std::vector<TaggedRecordBatch> DataTable::ConsumeRecords() {
     int num_carryover = tablet.times.size() - positions[1];
 
     // Case 1: Expired records. Just print a message.
-    LOG_IF(WARNING, num_expired != 0) << absl::Substitute(
+    VLOG_IF(1, num_expired > 0) << absl::Substitute(
         "$0 records for table $1 dropped due to late arrival [cutoff time=$2, oldest event "
         "time=$3].",
         num_expired, table_schema_.name(), end_time, tablet.times[sort_indexes[0]]);

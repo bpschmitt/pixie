@@ -25,6 +25,7 @@
 
 // LINT_C_FILE: Do not remove this line. It ensures cpplint treats this as a C file.
 
+#include "src/stirling/source_connectors/socket_tracer/bcc_bpf/macros.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/symaddrs.h"
 
 // Maps that communicates the location of symbols within a binary.
@@ -64,8 +65,7 @@ static __inline void process_openssl_data(struct pt_regs* ctx, uint64_t id,
 // so this function may break with OpenSSL updates.
 // To help combat this, the is parameterized with symbol addresses which are set by user-space,
 // base on the OpenSSL version detected.
-static int get_fd(uint64_t id, void* ssl) {
-  uint32_t tgid = id >> 32;
+static int get_fd(uint32_t tgid, void* ssl) {
   struct openssl_symaddrs_t* symaddrs = openssl_symaddrs_map.lookup(&tgid);
   if (symaddrs == NULL) {
     return kInvalidFD;
@@ -94,18 +94,24 @@ BPF_HASH(active_ssl_write_args_map, uint64_t, struct data_args_t);
 // int SSL_write(SSL *ssl, const void *buf, int num);
 int probe_entry_SSL_write(struct pt_regs* ctx) {
   uint64_t id = bpf_get_current_pid_tgid();
+  uint32_t tgid = id >> 32;
 
   void* ssl = (void*)PT_REGS_PARM1(ctx);
   char* buf = (char*)PT_REGS_PARM2(ctx);
 
+  int32_t fd = get_fd(tgid, ssl);
+  if (fd == kInvalidFD) {
+    return 0;
+  }
+
   struct data_args_t write_args = {};
   write_args.source_fn = kSSLWrite;
-  write_args.fd = get_fd(id, ssl);
+  write_args.fd = fd;
   write_args.buf = buf;
   active_ssl_write_args_map.update(&id, &write_args);
 
   // Mark connection as SSL right away, so encrypted traffic does not get traced.
-  set_conn_as_ssl(id, write_args.fd);
+  set_conn_as_ssl(tgid, write_args.fd);
 
   return 0;
 }
@@ -114,7 +120,7 @@ int probe_ret_SSL_write(struct pt_regs* ctx) {
   uint64_t id = bpf_get_current_pid_tgid();
 
   const struct data_args_t* write_args = active_ssl_write_args_map.lookup(&id);
-  if (write_args != NULL && write_args->fd != kInvalidFD) {
+  if (write_args != NULL) {
     process_openssl_data(ctx, id, kEgress, write_args);
   }
 
@@ -126,18 +132,24 @@ int probe_ret_SSL_write(struct pt_regs* ctx) {
 // int SSL_read(SSL *s, void *buf, int num)
 int probe_entry_SSL_read(struct pt_regs* ctx) {
   uint64_t id = bpf_get_current_pid_tgid();
+  uint32_t tgid = id >> 32;
 
   void* ssl = (void*)PT_REGS_PARM1(ctx);
   char* buf = (char*)PT_REGS_PARM2(ctx);
 
+  int32_t fd = get_fd(tgid, ssl);
+  if (fd == kInvalidFD) {
+    return 0;
+  }
+
   struct data_args_t read_args = {};
   read_args.source_fn = kSSLRead;
-  read_args.fd = get_fd(id, ssl);
+  read_args.fd = fd;
   read_args.buf = buf;
   active_ssl_read_args_map.update(&id, &read_args);
 
   // Mark connection as SSL right away, so encrypted traffic does not get traced.
-  set_conn_as_ssl(id, read_args.fd);
+  set_conn_as_ssl(tgid, read_args.fd);
 
   return 0;
 }
@@ -146,7 +158,7 @@ int probe_ret_SSL_read(struct pt_regs* ctx) {
   uint64_t id = bpf_get_current_pid_tgid();
 
   const struct data_args_t* read_args = active_ssl_read_args_map.lookup(&id);
-  if (read_args != NULL && read_args->fd != kInvalidFD) {
+  if (read_args != NULL) {
     process_openssl_data(ctx, id, kIngress, read_args);
   }
 

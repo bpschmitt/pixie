@@ -58,6 +58,9 @@ type Datastore interface {
 	// GetUserByEmail gets a user by email.
 	GetUserByEmail(string) (*datastore.UserInfo, error)
 
+	// GetUserByAuthProviderID returns the user that matches the AuthProviderID.
+	GetUserByAuthProviderID(string) (*datastore.UserInfo, error)
+
 	// CreateUserAndOrg creates a user and org for creating a new org with specified user as owner.
 	CreateUserAndOrg(*datastore.OrgInfo, *datastore.UserInfo) (orgID uuid.UUID, userID uuid.UUID, err error)
 	// GetOrg gets and org by ID.
@@ -84,9 +87,13 @@ type Datastore interface {
 // UserSettingsDatastore is the interface used to the backing store for user settings.
 type UserSettingsDatastore interface {
 	// GetUserSettings gets the user settings for the given user and keys.
-	GetUserSettings(uuid.UUID, []string) ([]string, error)
+	GetUserSettings(uuid.UUID) (*datastore.UserSettings, error)
 	// UpdateUserSettings updates the keys and values for the given user.
-	UpdateUserSettings(uuid.UUID, []string, []string) error
+	UpdateUserSettings(*datastore.UserSettings) error
+	// GetUserAttributes gets the attributes for the given user.
+	GetUserAttributes(uuid.UUID) (*datastore.UserAttributes, error)
+	// SetUserAttributes sets the attributes for the given user.
+	SetUserAttributes(*datastore.UserAttributes) error
 }
 
 // Server is an implementation of GRPC server for profile service.
@@ -108,14 +115,16 @@ func userInfoToProto(u *datastore.UserInfo) *profilepb.UserInfo {
 		profilePicture = *u.ProfilePicture
 	}
 	return &profilepb.UserInfo{
-		ID:             utils.ProtoFromUUID(u.ID),
-		OrgID:          utils.ProtoFromUUID(u.OrgID),
-		Username:       u.Username,
-		FirstName:      u.FirstName,
-		LastName:       u.LastName,
-		Email:          u.Email,
-		ProfilePicture: profilePicture,
-		IsApproved:     u.IsApproved,
+		ID:               utils.ProtoFromUUID(u.ID),
+		OrgID:            utils.ProtoFromUUID(u.OrgID),
+		Username:         u.Username,
+		FirstName:        u.FirstName,
+		LastName:         u.LastName,
+		Email:            u.Email,
+		ProfilePicture:   profilePicture,
+		IsApproved:       u.IsApproved,
+		IdentityProvider: u.IdentityProvider,
+		AuthProviderID:   u.AuthProviderID,
 	}
 }
 
@@ -167,18 +176,23 @@ func (s *Server) CreateUser(ctx context.Context, req *profilepb.CreateUserReques
 	// If enable approvals is true, that means new users by default will not be approved. (approval = false).
 	defaultIsApproved := !orgInfo.EnableApprovals
 	userInfo := &datastore.UserInfo{
-		OrgID:      orgID,
-		Username:   req.Username,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		Email:      req.Email,
-		IsApproved: defaultIsApproved,
+		OrgID:            orgID,
+		Username:         req.Username,
+		FirstName:        req.FirstName,
+		LastName:         req.LastName,
+		Email:            req.Email,
+		IsApproved:       defaultIsApproved,
+		IdentityProvider: req.IdentityProvider,
+		AuthProviderID:   req.AuthProviderID,
 	}
 	if len(userInfo.Username) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "invalid username")
 	}
 	if err := checkValidEmail(userInfo.Email); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if userInfo.IdentityProvider == "" {
+		return nil, status.Error(codes.InvalidArgument, "identity provider must not be empty")
 	}
 	uid, err := s.d.CreateUser(userInfo)
 	return utils.ProtoFromUUID(uid), err
@@ -206,6 +220,15 @@ func (s *Server) GetUserByEmail(ctx context.Context, req *profilepb.GetUserByEma
 	return userInfoToProto(userInfo), nil
 }
 
+// GetUserByAuthProviderID returns the user identified by the AuthProviderID.
+func (s *Server) GetUserByAuthProviderID(ctx context.Context, req *profilepb.GetUserByAuthProviderIDRequest) (*profilepb.UserInfo, error) {
+	userInfo, err := s.d.GetUserByAuthProviderID(req.AuthProviderID)
+	if err != nil {
+		return nil, toExternalError(err)
+	}
+	return userInfoToProto(userInfo), nil
+}
+
 // CreateOrgAndUser is the GRPC method to create a new org and user.
 func (s *Server) CreateOrgAndUser(ctx context.Context, req *profilepb.CreateOrgAndUserRequest) (*profilepb.CreateOrgAndUserResponse, error) {
 	orgInfo := &datastore.OrgInfo{
@@ -214,12 +237,14 @@ func (s *Server) CreateOrgAndUser(ctx context.Context, req *profilepb.CreateOrgA
 	}
 
 	userInfo := &datastore.UserInfo{
-		Username:  req.User.Username,
-		FirstName: req.User.FirstName,
-		LastName:  req.User.LastName,
-		Email:     req.User.Email,
+		Username:         req.User.Username,
+		FirstName:        req.User.FirstName,
+		LastName:         req.User.LastName,
+		Email:            req.User.Email,
+		IdentityProvider: req.User.IdentityProvider,
 		// By default, the creating user is the owner and should be approved.
-		IsApproved: true,
+		IsApproved:     true,
+		AuthProviderID: req.User.AuthProviderID,
 	}
 	if len(orgInfo.DomainName) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "invalid domain name")
@@ -229,6 +254,9 @@ func (s *Server) CreateOrgAndUser(ctx context.Context, req *profilepb.CreateOrgA
 	}
 	if len(userInfo.Username) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "invalid username")
+	}
+	if userInfo.IdentityProvider == "" {
+		return nil, status.Error(codes.InvalidArgument, "identity provider must not be empty")
 	}
 	if err := checkValidEmail(userInfo.Email); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -365,46 +393,85 @@ func (s *Server) UpdateUser(ctx context.Context, req *profilepb.UpdateUserReques
 func (s *Server) GetUserSettings(ctx context.Context, req *profilepb.GetUserSettingsRequest) (*profilepb.GetUserSettingsResponse, error) {
 	userID := utils.UUIDFromProtoOrNil(req.ID)
 
-	values, err := s.uds.GetUserSettings(userID, req.Keys)
+	settings, err := s.uds.GetUserSettings(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &profilepb.GetUserSettingsResponse{
-		Keys:   req.Keys,
-		Values: values,
-	}
-
-	return resp, nil
+	return &profilepb.GetUserSettingsResponse{
+		AnalyticsOptout: *settings.AnalyticsOptout,
+	}, nil
 }
 
-// UpdateUserSettings updates the given keys and values for the specified user.
+// UpdateUserSettings sets the user settings for the given user.
 func (s *Server) UpdateUserSettings(ctx context.Context, req *profilepb.UpdateUserSettingsRequest) (*profilepb.UpdateUserSettingsResponse, error) {
-	userID := utils.UUIDFromProtoOrNil(req.ID)
-
-	if len(req.Keys) != len(req.Values) {
-		return nil, status.Error(codes.InvalidArgument, "keys and values lengths must be equal")
+	userSettings := &datastore.UserSettings{
+		UserID: utils.UUIDFromProtoOrNil(req.ID),
 	}
 
-	err := s.uds.UpdateUserSettings(userID, req.Keys, req.Values)
+	if req.AnalyticsOptout != nil {
+		userSettings.AnalyticsOptout = &req.AnalyticsOptout.Value
+	}
+
+	err := s.uds.UpdateUserSettings(userSettings)
 	if err != nil {
 		return nil, err
 	}
 
-	return &profilepb.UpdateUserSettingsResponse{OK: true}, nil
+	return &profilepb.UpdateUserSettingsResponse{}, nil
+}
+
+// GetUserAttributes gets the user attributes for the given user.
+func (s *Server) GetUserAttributes(ctx context.Context, req *profilepb.GetUserAttributesRequest) (*profilepb.GetUserAttributesResponse, error) {
+	userID := utils.UUIDFromProtoOrNil(req.ID)
+
+	userAttrs, err := s.uds.GetUserAttributes(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &profilepb.GetUserAttributesResponse{
+		TourSeen: *userAttrs.TourSeen,
+	}, nil
+}
+
+// SetUserAttributes sets the user attributes for the given user.
+func (s *Server) SetUserAttributes(ctx context.Context, req *profilepb.SetUserAttributesRequest) (*profilepb.SetUserAttributesResponse, error) {
+	userAttrs := &datastore.UserAttributes{
+		UserID: utils.UUIDFromProtoOrNil(req.ID),
+	}
+
+	if req.TourSeen != nil {
+		userAttrs.TourSeen = &req.TourSeen.Value
+	}
+
+	err := s.uds.SetUserAttributes(userAttrs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &profilepb.SetUserAttributesResponse{}, nil
 }
 
 // InviteUser implements the Profile interface's InviteUser method.
 func (s *Server) InviteUser(ctx context.Context, req *profilepb.InviteUserRequest) (*profilepb.InviteUserResponse, error) {
+	// Create the Identity in the ID Manager.
+	ident, err := s.IDManager.CreateIdentity(ctx, req.Email)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating identitiy for '%s': %v", req.Email, err)
+	}
 	userInfo, err := s.d.GetUserByEmail(req.Email)
 	var userID uuid.UUID
 	if err == datastore.ErrUserNotFound {
+		// Create the user from the identity info.
 		createUserReq := &profilepb.CreateUserRequest{
-			OrgID:     req.OrgID,
-			Username:  req.Email,
-			FirstName: req.FirstName,
-			LastName:  req.LastName,
-			Email:     req.Email,
+			OrgID:            req.OrgID,
+			Username:         req.Email,
+			FirstName:        req.FirstName,
+			LastName:         req.LastName,
+			Email:            req.Email,
+			IdentityProvider: ident.IdentityProvider,
+			AuthProviderID:   ident.AuthProviderID,
 		}
 
 		userIDPb, err := s.CreateUser(ctx, createUserReq)
@@ -431,19 +498,21 @@ func (s *Server) InviteUser(ctx context.Context, req *profilepb.InviteUserReques
 		userID = userInfo.ID
 	}
 
-	idpCreateAccReq := &idmanager.CreateInviteLinkRequest{
-		Email:    req.Email,
-		PLOrgID:  utils.ProtoToUUIDStr(req.OrgID),
-		PLUserID: userID.String(),
+	err = s.IDManager.SetPLMetadata(ident.AuthProviderID, utils.UUIDFromProtoOrNil(req.OrgID).String(), userID.String())
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err := s.IDManager.CreateInviteLink(ctx, idpCreateAccReq)
+	// Create invite link for the user.
+	resp, err := s.IDManager.CreateInviteLinkForIdentity(ctx, &idmanager.CreateInviteLinkForIdentityRequest{
+		AuthProviderID: ident.AuthProviderID,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &profilepb.InviteUserResponse{
-		Email:      resp.Email,
+		Email:      req.Email,
 		InviteLink: resp.InviteLink,
 	}, nil
 }

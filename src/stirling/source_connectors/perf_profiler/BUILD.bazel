@@ -46,7 +46,6 @@ pl_cc_test(
     ],
     tags = [
         "exclusive",
-        "no_asan",
         "requires_bpf",
     ],
     deps = [
@@ -69,6 +68,17 @@ pl_cc_test(
 )
 
 pl_cc_test(
+    name = "elf_reader_symbolizer_test",
+    srcs = ["elf_reader_symbolizer_test.cc"],
+    tags = [
+        "requires_bpf",
+    ],
+    deps = [
+        ":cc_library",
+    ],
+)
+
+pl_cc_test(
     name = "stringifier_test",
     srcs = ["stringifier_test.cc"],
     tags = [
@@ -77,5 +87,13 @@ pl_cc_test(
     deps = [
         ":cc_library",
         "//src/stirling/source_connectors/perf_profiler/testing/bpf:stringifier_test_bpf_text",
+    ],
+)
+
+pl_cc_test(
+    name = "stack_trace_id_cache_test",
+    srcs = ["stack_trace_id_cache_test.cc"],
+    deps = [
+        ":cc_library",
     ],
 )

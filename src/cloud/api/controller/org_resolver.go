@@ -25,7 +25,6 @@ import (
 	"github.com/graph-gophers/graphql-go"
 
 	"px.dev/pixie/src/api/proto/cloudpb"
-	"px.dev/pixie/src/cloud/profile/profilepb"
 	"px.dev/pixie/src/shared/services/authcontext"
 	"px.dev/pixie/src/utils"
 )
@@ -69,8 +68,8 @@ func (q *QueryResolver) OrgUsers(ctx context.Context) ([]*UserInfoResolver, erro
 	if err != nil {
 		return nil, err
 	}
-	grpcAPI := q.Env.ProfileServiceClient
-	resp, err := grpcAPI.GetUsersInOrg(ctx, &profilepb.GetUsersInOrgRequest{
+	grpcAPI := q.Env.OrgServer
+	resp, err := grpcAPI.GetUsersInOrg(ctx, &cloudpb.GetUsersInOrgRequest{
 		OrgID: utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().OrgID),
 	})
 	if err != nil {
@@ -78,48 +77,40 @@ func (q *QueryResolver) OrgUsers(ctx context.Context) ([]*UserInfoResolver, erro
 	}
 
 	userResolvers := make([]*UserInfoResolver, len(resp.Users))
-	for i := range resp.Users {
-		userResolvers[i] = &UserInfoResolver{sCtx, &q.Env, ctx, resp.Users[i]}
+	for idx, user := range resp.Users {
+		userResolvers[idx] = &UserInfoResolver{ctx, &q.Env, &cloudpb.UserInfo{
+			ID:             user.ID,
+			OrgID:          user.OrgID,
+			Username:       user.Username,
+			FirstName:      user.FirstName,
+			LastName:       user.LastName,
+			Email:          user.Email,
+			ProfilePicture: user.ProfilePicture,
+			IsApproved:     user.IsApproved,
+		}}
 	}
 
 	return userResolvers, nil
 }
 
-// UpdateOrg updates the org info.
-func (q *QueryResolver) UpdateOrg(ctx context.Context, args *updateOrgArgs) (bool, error) {
-	req := &profilepb.UpdateOrgRequest{
-		ID: utils.ProtoFromUUIDStrOrNil(string(args.OrgInfo.ID)),
-	}
-
-	if args.OrgInfo.EnableApprovals != nil {
-		req.EnableApprovals = &types.BoolValue{
-			Value: *args.OrgInfo.EnableApprovals,
-		}
-	}
-
-	// TODO(philkuz)(PC-921) Use a graphQL API instead of ProfileServiceClient.
-	_, err := q.Env.ProfileServiceClient.UpdateOrg(ctx, req)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-type updateOrgArgs struct {
-	OrgInfo *editableOrgInfo
-}
-
-type editableOrgInfo struct {
-	ID              graphql.ID
-	EnableApprovals *bool
-}
-
 // OrgInfoResolver resolves org information.
 type OrgInfoResolver struct {
-	SessionCtx *authcontext.AuthContext
-	GQLEnv     *GraphQLEnv
-	ctx        context.Context
-	OrgInfo    *profilepb.OrgInfo
+	OrgInfo *cloudpb.OrgInfo
+}
+
+// ID returns the org id.
+func (u *OrgInfoResolver) ID() graphql.ID {
+	return graphql.ID(utils.ProtoToUUIDStr(u.OrgInfo.ID))
+}
+
+// Name returns the org name.
+func (u *OrgInfoResolver) Name() string {
+	return u.OrgInfo.OrgName
+}
+
+// EnableApprovals returns whether the org requires admin approval for new users or not.
+func (u *OrgInfoResolver) EnableApprovals() bool {
+	return u.OrgInfo.EnableApprovals
 }
 
 // Org resolves org information.
@@ -128,32 +119,50 @@ func (q *QueryResolver) Org(ctx context.Context) (*OrgInfoResolver, error) {
 	if err != nil {
 		return nil, err
 	}
-	grpcAPI := q.Env.ProfileServiceClient
-	orgInfo, err := grpcAPI.GetOrg(ctx, utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().OrgID))
+	grpcAPI := q.Env.OrgServer
+	idPb := utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().OrgID)
+	orgInfo, err := grpcAPI.GetOrg(ctx, idPb)
 	if err != nil {
-		orgInfo = nil
+		orgInfo = &cloudpb.OrgInfo{
+			ID: idPb,
+		}
 	}
-
-	return &OrgInfoResolver{sCtx, &q.Env, ctx, orgInfo}, nil
+	return &OrgInfoResolver{orgInfo}, nil
 }
 
-// ID returns the org id.
-func (u *OrgInfoResolver) ID() graphql.ID {
-	if u.OrgInfo != nil && u.OrgInfo.ID != nil {
-		return graphql.ID(utils.ProtoToUUIDStr(u.OrgInfo.ID))
-	}
-	return graphql.ID(u.SessionCtx.Claims.GetUserClaims().OrgID)
+type updateOrgSettingsArgs struct {
+	OrgID       graphql.ID
+	OrgSettings editableOrgSettings
 }
 
-// Name returns the org name.
-func (u *OrgInfoResolver) Name() string {
-	if u.OrgInfo == nil {
-		return ""
-	}
-	return u.OrgInfo.OrgName
+type editableOrgSettings struct {
+	EnableApprovals *bool
 }
 
-// EnableApprovals returns whether the org requires admin approval for new users or not.
-func (u *OrgInfoResolver) EnableApprovals() bool {
-	return u.OrgInfo.EnableApprovals
+// UpdateOrgSettings updates settings for the given org.
+func (q *QueryResolver) UpdateOrgSettings(ctx context.Context, args updateOrgSettingsArgs) (*OrgInfoResolver, error) {
+	idPb := utils.ProtoFromUUIDStrOrNil(string(args.OrgID))
+	req := &cloudpb.UpdateOrgRequest{
+		ID: idPb,
+	}
+
+	if args.OrgSettings.EnableApprovals != nil {
+		req.EnableApprovals = &types.BoolValue{
+			Value: *args.OrgSettings.EnableApprovals,
+		}
+	}
+
+	grpcAPI := q.Env.OrgServer
+	_, err := grpcAPI.UpdateOrg(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	orgInfo, err := grpcAPI.GetOrg(ctx, idPb)
+	if err != nil {
+		orgInfo = &cloudpb.OrgInfo{
+			ID: idPb,
+		}
+	}
+	return &OrgInfoResolver{orgInfo}, nil
 }

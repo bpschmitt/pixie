@@ -17,18 +17,24 @@
  */
 
 import * as React from 'react';
-import { WidgetDisplay } from 'containers/live/vis';
+import { WidgetDisplay } from 'app/containers/live/vis';
 
-import { data as visData, Network } from 'vis-network/standalone';
-import { makeStyles, useTheme } from '@material-ui/core/styles';
+import { data as visData, Network, Options } from 'vis-network/standalone';
+import { makeStyles, useTheme, Theme } from '@material-ui/core/styles';
 import { createStyles } from '@material-ui/styles';
-import { toEntityURL, toSingleEntityPage } from 'containers/live-widgets/utils/live-view-params';
-import { ClusterContext } from 'common/cluster-context';
-import { SemanticType, Relation } from 'types/generated/vizierapi_pb';
-import Button from '@material-ui/core/Button';
+import AccountTreeIcon from '@material-ui/icons/AccountTree';
+import WorkspacesIcon from '@material-ui/icons/Workspaces';
+import SpeedIcon from '@material-ui/icons/Speed';
+import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
+import IconButton from '@material-ui/core/IconButton';
+import Tooltip from '@material-ui/core/Tooltip';
+import { toEntityURL, toSingleEntityPage } from 'app/containers/live-widgets/utils/live-view-params';
+import { ClusterContext } from 'app/common/cluster-context';
+import { LiveRouteContext } from 'app/containers/App/live-routing';
+import { SemanticType, Relation } from 'app/types/generated/vizierapi_pb';
 import { useHistory } from 'react-router-dom';
-import { Arguments } from 'utils/args-utils';
-import { formatFloat64Data } from 'utils/format-data';
+import { Arguments } from 'app/utils/args-utils';
+import { formatFloat64Data } from 'app/utils/format-data';
 import {
   getColorForErrorRate,
   getColorForLatency,
@@ -63,7 +69,7 @@ interface RequestGraphProps {
   propagatedArgs?: Arguments;
 }
 
-const useStyles = makeStyles(() => createStyles({
+const useStyles = makeStyles((theme: Theme) => createStyles({
   root: {
     width: '100%',
     height: '100%',
@@ -82,15 +88,23 @@ const useStyles = makeStyles(() => createStyles({
       boxShadow: 'none',
     },
   },
+  enabled: {
+    color: theme.palette.text.secondary,
+  },
+  buttonContainer: {
+    '& > .MuiIconButton-root': {
+      marginRight: theme.spacing(2),
+    },
+  },
 }));
 
-export const RequestGraphWidget = (props: RequestGraphProps) => {
+export const RequestGraphWidget: React.FC<RequestGraphProps> = ({
+  data, relation, display, propagatedArgs,
+}) => {
   const { selectedClusterName } = React.useContext(ClusterContext);
   const history = useHistory();
 
   const ref = React.useRef<HTMLDivElement>();
-  const { data, relation } = props;
-  const { display } = props;
 
   const [network, setNetwork] = React.useState<Network>(null);
   const [graph, setGraph] = React.useState<RequestGraph>(null);
@@ -103,7 +117,8 @@ export const RequestGraphWidget = (props: RequestGraphProps) => {
   const [focused, setFocused] = React.useState<boolean>(false);
 
   const theme = useTheme();
-  const graphOpts = getGraphOptions(theme, -1);
+  const defaultGraphOpts = getGraphOptions(theme, -1);
+  const [graphOpts, setGraphOpts] = React.useState<Options>(defaultGraphOpts);
 
   /**
    * Toggle the hier/non-hier clustering mode.
@@ -171,38 +186,37 @@ export const RequestGraphWidget = (props: RequestGraphProps) => {
    */
   const toggleHierarchy = React.useCallback(() => setHierarchyEnabled((enabled) => {
     const hierEnabled = !enabled;
-    if (!network) {
-      return hierEnabled;
-    }
+    let opts = {};
     if (hierEnabled) {
-      const opts = {
-        ...graphOpts,
+      opts = {
+        ...defaultGraphOpts,
         layout: {
-          ...graphOpts.layout,
+          ...defaultGraphOpts.layout,
           hierarchical: {
             enabled: true,
-            levelSeparation: 200,
+            levelSeparation: 50,
             direction: 'LR',
             sortMethod: 'directed',
+            nodeSpacing: 50,
+            edgeMinimization: true,
+            blockShifting: true,
           },
         },
       };
-      network.setOptions(opts);
     } else {
-      const opts = {
-        ...graphOpts,
+      opts = {
+        ...defaultGraphOpts,
         layout: {
-          ...graphOpts.layout,
+          ...defaultGraphOpts.layout,
           hierarchical: {
             enabled: false,
           },
         },
       };
-
-      network.setOptions(opts);
     }
+    setGraphOpts(opts);
     return hierEnabled;
-  }), [network]);
+  }), [defaultGraphOpts]);
 
   const toggleColor = React.useCallback(() => setColorByLatency((enabled) => {
     const latencyColor = !enabled;
@@ -215,7 +229,7 @@ export const RequestGraphWidget = (props: RequestGraphProps) => {
       });
     }
     return latencyColor;
-  }), [graph]);
+  }), [theme, graph]);
 
   const toggleFocus = React.useCallback(() => setFocused((enabled) => !enabled), []);
 
@@ -279,20 +293,22 @@ export const RequestGraphWidget = (props: RequestGraphProps) => {
       });
       setNetwork(n);
     }
-    // To list all exhaustive deps, we also have to list theme and graphOpts, which will never change.
+    // To list all exhaustive deps, we also have to list theme, which will never change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, display, ref, colorByLatency, colInfos]);
+  }, [graph, display, ref, colorByLatency, colInfos, graphOpts]);
+
+  const { embedState } = React.useContext(LiveRouteContext);
 
   const doubleClickCallback = React.useCallback((params?: any) => {
-    if (params.nodes.length > 0) {
+    if (params.nodes.length > 0 && !embedState.widget) {
       const nodeName = !clusteredMode ? params.nodes[0]
         : graph.nodes.get(network.getNodesInCluster(params.nodes[0]))[0].service;
       const semType = !clusteredMode ? SemanticType.ST_POD_NAME : SemanticType.ST_SERVICE_NAME;
       const page = toSingleEntityPage(nodeName, semType, selectedClusterName);
-      const pathname = toEntityURL(page, props.propagatedArgs);
+      const pathname = toEntityURL(page, embedState, propagatedArgs);
       history.push(pathname);
     }
-  }, [history, selectedClusterName, clusteredMode, network, graph, props.propagatedArgs]);
+  }, [history, selectedClusterName, clusteredMode, network, graph, propagatedArgs, embedState]);
 
   // This function needs to dynamically change on 'network' every time clusteredMode is updated,
   // so we assign it separately from where Network is created.
@@ -307,25 +323,34 @@ export const RequestGraphWidget = (props: RequestGraphProps) => {
   return (
     <div className={`${classes.root} ${focused ? 'focus' : ''}`} onFocus={toggleFocus} onBlur={toggleFocus}>
       <div className={classes.container} ref={ref} />
-      <div>
-        <Button
-          size='small'
-          onClick={toggleColor}
-        >
-          {colorByLatency ? 'Color by error rate' : 'Color by latency'}
-        </Button>
-        <Button
-          size='small'
-          onClick={toggleHierarchy}
-        >
-          {hierarchyEnabled ? 'Disable hierarchy' : 'Enable hierarchy'}
-        </Button>
-        <Button
-          size='small'
-          onClick={toggleMode}
-        >
-          {clusteredMode ? 'Disable clustering' : 'Cluster by service'}
-        </Button>
+      <div className={classes.buttonContainer}>
+        <Tooltip title={colorByLatency ? 'Colored by latency' : 'Colored by Error Rate'}>
+          <IconButton
+            size='small'
+            onClick={toggleColor}
+            className={classes.enabled}
+          >
+            {colorByLatency ? <SpeedIcon /> : <ErrorOutlineIcon />}
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={hierarchyEnabled ? 'Hierarchy enabled' : 'Hierarchy disabled'}>
+          <IconButton
+            size='small'
+            onClick={toggleHierarchy}
+            className={hierarchyEnabled ? classes.enabled : ''}
+          >
+            <AccountTreeIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={clusteredMode ? 'Clustered by service' : 'Clustering disabled'}>
+          <IconButton
+            size='small'
+            onClick={toggleMode}
+            className={clusteredMode ? classes.enabled : ''}
+          >
+            <WorkspacesIcon />
+          </IconButton>
+        </Tooltip>
       </div>
     </div>
   );

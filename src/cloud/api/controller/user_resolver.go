@@ -25,17 +25,16 @@ import (
 	"github.com/gogo/protobuf/types"
 	"github.com/graph-gophers/graphql-go"
 
-	"px.dev/pixie/src/cloud/profile/profilepb"
+	"px.dev/pixie/src/api/proto/cloudpb"
 	"px.dev/pixie/src/shared/services/authcontext"
 	"px.dev/pixie/src/utils"
 )
 
 // UserInfoResolver resolves user information.
 type UserInfoResolver struct {
-	SessionCtx *authcontext.AuthContext
-	GQLEnv     *GraphQLEnv
-	ctx        context.Context
-	UserInfo   *profilepb.UserInfo
+	ctx      context.Context
+	GQLEnv   *GraphQLEnv
+	UserInfo *cloudpb.UserInfo
 }
 
 // User resolves user information.
@@ -44,58 +43,49 @@ func (q *QueryResolver) User(ctx context.Context) (*UserInfoResolver, error) {
 	if err != nil {
 		return nil, err
 	}
-	grpcAPI := q.Env.ProfileServiceClient
-	userInfo, err := grpcAPI.GetUser(ctx, utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().UserID))
-	if err != nil {
-		userInfo = nil
-	}
 
-	return &UserInfoResolver{sCtx, &q.Env, ctx, userInfo}, nil
+	userID := utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().UserID)
+	userInfo, err := q.Env.UserServer.GetUser(ctx, userID)
+	if err != nil {
+		// Normally we'd return a nil resolver with an error here but if we get here,
+		// it means that this is a support account, so grab info from the UserClaims and return that.
+		userInfo = &cloudpb.UserInfo{
+			ID:    userID,
+			Email: sCtx.Claims.GetUserClaims().Email,
+			OrgID: utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().OrgID),
+		}
+	}
+	return &UserInfoResolver{ctx, &q.Env, userInfo}, nil
 }
 
 // ID returns the user id.
 func (u *UserInfoResolver) ID() graphql.ID {
-	if u.UserInfo != nil && u.UserInfo.ID != nil {
-		return graphql.ID(utils.ProtoToUUIDStr(u.UserInfo.ID))
-	}
-	return graphql.ID(u.SessionCtx.Claims.GetUserClaims().UserID)
+	return graphql.ID(utils.ProtoToUUIDStr(u.UserInfo.ID))
 }
 
 // Name returns the user name.
 func (u *UserInfoResolver) Name() string {
-	if u.UserInfo == nil {
-		return ""
-	}
 	return fmt.Sprintf("%s %s", u.UserInfo.FirstName, u.UserInfo.LastName)
 }
 
 // Email returns the user email.
 func (u *UserInfoResolver) Email() string {
-	if u.UserInfo != nil && u.UserInfo.Email != "" {
-		return u.UserInfo.Email
-	}
-
-	return u.SessionCtx.Claims.GetUserClaims().Email
+	return u.UserInfo.Email
 }
 
 // Picture returns the users picture/avatar.
 func (u *UserInfoResolver) Picture() string {
-	if u.UserInfo == nil {
-		return ""
-	}
 	return u.UserInfo.ProfilePicture
 }
 
 // OrgID returns the user's org id.
 func (u *UserInfoResolver) OrgID() string {
-	return u.SessionCtx.Claims.GetUserClaims().OrgID
+	return utils.ProtoToUUIDStr(u.UserInfo.OrgID)
 }
 
 // OrgName returns the user's org name.
 func (u *UserInfoResolver) OrgName() string {
-	orgID := u.SessionCtx.Claims.GetUserClaims().OrgID
-
-	org, err := u.GQLEnv.ProfileServiceClient.GetOrg(u.ctx, utils.ProtoFromUUIDStrOrNil(orgID))
+	org, err := u.GQLEnv.UserServer.GetOrg(u.ctx, u.UserInfo.OrgID)
 	if err != nil {
 		return ""
 	}
@@ -108,116 +98,163 @@ func (u *UserInfoResolver) IsApproved() bool {
 	return u.UserInfo.IsApproved
 }
 
-// UserSettingResolver resolves a user setting.
-type UserSettingResolver struct {
-	key   string
-	value string
-}
-
-// Key gets the key for the user setting.
-func (u *UserSettingResolver) Key() string {
-	return u.key
-}
-
-// Value gets the value for the user setting.
-func (u *UserSettingResolver) Value() string {
-	return u.value
-}
-
-type userSettingsArgs struct {
-	Keys []*string
-}
-
-// UserSettings resolves user settings information.
-func (q *QueryResolver) UserSettings(ctx context.Context, args *userSettingsArgs) ([]*UserSettingResolver, error) {
-	sCtx, err := authcontext.FromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	keys := make([]string, len(args.Keys))
-	for i := range args.Keys {
-		keys[i] = *args.Keys[i]
-	}
-
-	grpcAPI := q.Env.ProfileServiceClient
-	resp, err := grpcAPI.GetUserSettings(ctx, &profilepb.GetUserSettingsRequest{
-		ID:   utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().UserID),
-		Keys: keys,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	resolvers := make([]*UserSettingResolver, len(args.Keys))
-	for i, k := range resp.Keys {
-		resolvers[i] = &UserSettingResolver{k, resp.Values[i]}
-	}
-
-	return resolvers, nil
+// UserSettingsResolver resolves user settings.
+type UserSettingsResolver struct {
+	AnalyticsOptout bool
+	ID              graphql.ID
 }
 
 type updateUserSettingsArgs struct {
-	Keys   []*string
-	Values []*string
+	Settings *editableUserSettings
+}
+
+type editableUserSettings struct {
+	AnalyticsOptout *bool
+}
+
+// UserSettings resolves user settings information.
+func (q *QueryResolver) UserSettings(ctx context.Context) (*UserSettingsResolver, error) {
+	sCtx, err := authcontext.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	id := sCtx.Claims.GetUserClaims().UserID
+	resp, err := q.Env.UserServer.GetUserSettings(ctx, &cloudpb.GetUserSettingsRequest{
+		ID: utils.ProtoFromUUIDStrOrNil(id),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserSettingsResolver{AnalyticsOptout: resp.AnalyticsOptout, ID: graphql.ID(id)}, nil
 }
 
 // UpdateUserSettings updates the user settings for the current user.
-func (q *QueryResolver) UpdateUserSettings(ctx context.Context, args *updateUserSettingsArgs) (bool, error) {
+func (q *QueryResolver) UpdateUserSettings(ctx context.Context, args *updateUserSettingsArgs) (*UserSettingsResolver, error) {
 	sCtx, err := authcontext.FromContext(ctx)
 	if err != nil {
-		return false, err
-	}
-	grpcAPI := q.Env.ProfileServiceClient
-
-	keys := make([]string, len(args.Keys))
-	for i := range args.Keys {
-		keys[i] = *args.Keys[i]
-	}
-	values := make([]string, len(args.Values))
-	for i := range args.Values {
-		values[i] = *args.Values[i]
+		return nil, err
 	}
 
-	resp, err := grpcAPI.UpdateUserSettings(ctx, &profilepb.UpdateUserSettingsRequest{
-		ID:     utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().UserID),
-		Keys:   keys,
-		Values: values,
-	})
+	id := sCtx.Claims.GetUserClaims().UserID
+	req := &cloudpb.UpdateUserSettingsRequest{
+		ID: utils.ProtoFromUUIDStrOrNil(id),
+	}
+
+	resp := &UserSettingsResolver{ID: graphql.ID(id)}
+
+	if args.Settings.AnalyticsOptout != nil {
+		req.AnalyticsOptout = &types.BoolValue{Value: *args.Settings.AnalyticsOptout}
+		resp.AnalyticsOptout = *args.Settings.AnalyticsOptout
+	}
+
+	_, err = q.Env.UserServer.UpdateUserSettings(ctx, req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	return resp.OK, nil
+	return resp, nil
+}
+
+type updateUserPermissionsArgs struct {
+	UserID          graphql.ID
+	UserPermissions *editableUserPermissions
+}
+
+type editableUserPermissions struct {
+	IsApproved *bool
 }
 
 // UpdateUser updates the user info.
-func (q *QueryResolver) UpdateUser(ctx context.Context, args *updateUserArgs) (bool, error) {
-	req := &profilepb.UpdateUserRequest{
-		ID: utils.ProtoFromUUIDStrOrNil(string(args.UserInfo.ID)),
+func (q *QueryResolver) UpdateUserPermissions(ctx context.Context, args *updateUserPermissionsArgs) (*UserInfoResolver, error) {
+	userID := utils.ProtoFromUUIDStrOrNil(string(args.UserID))
+	req := &cloudpb.UpdateUserRequest{
+		ID: userID,
 	}
 
-	if args.UserInfo.ProfilePicture != nil {
-		req.DisplayPicture = &types.StringValue{Value: *args.UserInfo.ProfilePicture}
-	}
-	if args.UserInfo.IsApproved != nil {
-		req.IsApproved = &types.BoolValue{Value: *args.UserInfo.IsApproved}
+	if args.UserPermissions.IsApproved != nil {
+		req.IsApproved = &types.BoolValue{Value: *args.UserPermissions.IsApproved}
 	}
 
-	// TODO(philkuz)(PC-924) Use a graphQL API instead of ProfileServiceClient.
-	_, err := q.Env.ProfileServiceClient.UpdateUser(ctx, req)
+	_, err := q.Env.UserServer.UpdateUser(ctx, req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return true, nil
+
+	sCtx, err := authcontext.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userInfo, err := q.Env.UserServer.GetUser(ctx, userID)
+	if err != nil {
+		// Normally we'd return a nil resolver with an error here but if we get here,
+		// it means that this is a support account, so grab info from the UserClaims and return that.
+		userInfo = &cloudpb.UserInfo{
+			ID:    userID,
+			Email: sCtx.Claims.GetUserClaims().Email,
+			OrgID: utils.ProtoFromUUIDStrOrNil(sCtx.Claims.GetUserClaims().OrgID),
+		}
+	}
+	return &UserInfoResolver{ctx, &q.Env, userInfo}, nil
 }
 
-type updateUserArgs struct {
-	UserInfo *editableUserInfo
+// UserAttributesResolver is a resolver for user attributes.
+type UserAttributesResolver struct {
+	TourSeen bool
+	ID       graphql.ID
 }
 
-type editableUserInfo struct {
-	ID             graphql.ID
-	ProfilePicture *string
-	IsApproved     *bool
+// UserAttributes resolves user attributes information.
+func (q *QueryResolver) UserAttributes(ctx context.Context) (*UserAttributesResolver, error) {
+	sCtx, err := authcontext.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	id := sCtx.Claims.GetUserClaims().UserID
+	resp, err := q.Env.UserServer.GetUserAttributes(ctx, &cloudpb.GetUserAttributesRequest{
+		ID: utils.ProtoFromUUIDStrOrNil(id),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserAttributesResolver{TourSeen: resp.TourSeen, ID: graphql.ID(id)}, nil
+}
+
+type setUserAttributesArgs struct {
+	Attributes *editableUserAttributes
+}
+
+type editableUserAttributes struct {
+	TourSeen *bool
+}
+
+// SetUserAttributes updates the user settings for the current user.
+func (q *QueryResolver) SetUserAttributes(ctx context.Context, args *setUserAttributesArgs) (*UserAttributesResolver, error) {
+	sCtx, err := authcontext.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	id := sCtx.Claims.GetUserClaims().UserID
+	req := &cloudpb.SetUserAttributesRequest{
+		ID: utils.ProtoFromUUIDStrOrNil(id),
+	}
+
+	resp := &UserAttributesResolver{ID: graphql.ID(id)}
+
+	if args.Attributes.TourSeen != nil {
+		req.TourSeen = &types.BoolValue{Value: *args.Attributes.TourSeen}
+		resp.TourSeen = *args.Attributes.TourSeen
+	}
+
+	_, err = q.Env.UserServer.SetUserAttributes(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }

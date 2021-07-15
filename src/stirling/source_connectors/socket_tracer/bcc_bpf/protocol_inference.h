@@ -137,6 +137,57 @@ static __inline enum MessageType infer_cql_message(const char* buf, size_t count
   }
 }
 
+static __inline enum MessageType infer_mongo_message(const char* buf, size_t count) {
+  // Reference:
+  // https://docs.mongodb.com/manual/reference/mongodb-wire-protocol/#std-label-wp-request-opcodes.
+  static const int32_t kOPReply = 1;
+  static const int32_t kOPUpdate = 2001;
+  static const int32_t kOPInsert = 2002;
+  static const int32_t kReserved = 2003;
+  static const int32_t kOPQuery = 2004;
+  static const int32_t kOPGetMore = 2005;
+  static const int32_t kOPDelete = 2006;
+  static const int32_t kOPKillCursors = 2007;
+  static const int32_t kOPCompressed = 2012;
+  static const int32_t kOPMsg = 2013;
+
+  static const int32_t kMongoHeaderLength = 16;
+
+  if (count < kMongoHeaderLength) {
+    return kUnknown;
+  }
+
+  int32_t* buf4 = (int32_t*)buf;
+  int32_t message_length = buf4[0];
+
+  if (message_length < kMongoHeaderLength) {
+    return kUnknown;
+  }
+
+  int32_t request_id = buf4[1];
+
+  if (request_id < 0) {
+    return kUnknown;
+  }
+
+  int32_t response_to = buf4[2];
+  int32_t opcode = buf4[3];
+
+  if (opcode == kOPReply) {
+    if (response_to > 0) {
+      return kResponse;
+    }
+  } else if (opcode == kOPUpdate || opcode == kOPInsert || opcode == kReserved ||
+             opcode == kOPQuery || opcode == kOPGetMore || opcode == kOPDelete ||
+             opcode == kOPKillCursors || opcode == kOPCompressed || opcode == kOPMsg) {
+    if (response_to == 0) {
+      return kRequest;
+    }
+  }
+
+  return kUnknown;
+}
+
 // TODO(yzhao): This is for initial development use. Later we need to combine with more inference
 // code, as the startup message only appears at the beginning of the exchanges between PostgreSQL
 // client and server.
@@ -284,6 +335,61 @@ static __inline enum MessageType infer_mysql_message(const char* buf, size_t cou
   return kUnknown;
 }
 
+// Reference: https://kafka.apache.org/protocol.html#protocol_messages
+// Request Header v0 => request_api_key request_api_version correlation_id
+//     request_api_key => INT16
+//     request_api_version => INT16
+//     correlation_id => INT32
+static __inline enum MessageType infer_kafka_request(const char* buf) {
+  // API is Kafka's terminology for opcode.
+  static const int kNumAPIs = 62;
+  static const int kMaxAPIVersion = 12;
+
+  const int16_t request_API_key = read_big_endian_int16(buf);
+  if (request_API_key < 0 || request_API_key > kNumAPIs) {
+    return kUnknown;
+  }
+
+  const int16_t request_API_version = read_big_endian_int16(buf + 2);
+  if (request_API_version < 0 || request_API_version > kMaxAPIVersion) {
+    return kUnknown;
+  }
+
+  const int32_t correlation_id = read_big_endian_int32(buf + 4);
+  if (correlation_id < 0) {
+    return kUnknown;
+  }
+  return kRequest;
+}
+
+static __inline enum MessageType infer_kafka_message(const char* buf, size_t count,
+                                                     struct conn_info_t* conn_info) {
+  // Second statement checks whether suspected header matches the length of current packet.
+  // This shouldn't confuse with MySQL because MySQL uses little endian, and Kafka uses big endian.
+  bool use_prev_buf =
+      (conn_info->prev_count == 4) && ((size_t)read_big_endian_int32(conn_info->prev_buf) == count);
+
+  if (use_prev_buf) {
+    count += 4;
+  }
+
+  // length(4 bytes) + api_key(2 bytes) + api_version(2 bytes) + correlation_id(4 bytes)
+  static const int kMinRequestLength = 12;
+  if (count < kMinRequestLength) {
+    return kUnknown;
+  }
+
+  const int32_t message_size = use_prev_buf ? count : read_big_endian_int32(buf) + 4;
+
+  // Enforcing count to be exactly message_size + 4 to mitigate misclassification.
+  // However, this will miss long messages broken into multiple reads.
+  if (message_size < 0 || count != (size_t)message_size) {
+    return kUnknown;
+  }
+  const char* request_buf = use_prev_buf ? buf : buf + 4;
+  return infer_kafka_request(request_buf);
+}
+
 static __inline enum MessageType infer_dns_message(const char* buf, size_t count) {
   const int kDNSHeaderSize = 12;
 
@@ -367,6 +473,54 @@ static __inline bool is_redis_message(const char* buf, size_t count) {
   return true;
 }
 
+// NATS messages are in texts. The role is inferred from the message type.
+// See https://github.com/nats-io/docs/blob/master/nats_protocol/nats-protocol.md
+//
+// In case of bpf instruction count limit becomes a problem, we can drop CONNECT and INFO message
+// detection, they are only sent once after establishing the connection.
+static __inline enum MessageType infer_nats_message(const char* buf, size_t count) {
+  // NATS messages start with an one-byte type marker, and end with \r\n terminal sequence.
+  if (count < 3) {
+    return kUnknown;
+  }
+  // The last two chars are \r\n, the terminal sequence of all NATS messages.
+  if (buf[count - 2] != '\r') {
+    return kUnknown;
+  }
+  if (buf[count - 1] != '\n') {
+    return kUnknown;
+  }
+  if (buf[0] == 'C' && buf[1] == 'O' && buf[2] == 'N' && buf[3] == 'N' && buf[4] == 'E' &&
+      buf[5] == 'C' && buf[6] == 'T') {
+    // kRequest is not precise. Here only means the message is sent by client.
+    return kRequest;
+  }
+  if (buf[0] == 'S' && buf[1] == 'U' && buf[2] == 'B') {
+    return kRequest;
+  }
+  if (buf[0] == 'U' && buf[1] == 'N' && buf[2] == 'S' && buf[3] == 'U' && buf[4] == 'B') {
+    return kRequest;
+  }
+  if (buf[0] == 'P' && buf[1] == 'U' && buf[2] == 'B') {
+    return kRequest;
+  }
+  if (buf[0] == 'I' && buf[1] == 'N' && buf[2] == 'F' && buf[3] == 'O') {
+    // kResponse is not precise. Here only means the message is sent by server.
+    return kResponse;
+  }
+  if (buf[0] == 'M' && buf[1] == 'S' && buf[2] == 'G') {
+    return kResponse;
+  }
+  if (buf[0] == '+' && buf[1] == 'O' && buf[2] == 'K') {
+    return kResponse;
+  }
+  if (buf[0] == '-' && buf[1] == 'E' && buf[2] == 'R' && buf[3] == 'R') {
+    return kResponse;
+  }
+  // PING & PONG can be sent by both client and server. Don't use them.
+  return kUnknown;
+}
+
 static __inline struct protocol_message_t infer_protocol(const char* buf, size_t count,
                                                          struct conn_info_t* conn_info) {
   struct protocol_message_t inferred_message;
@@ -377,10 +531,14 @@ static __inline struct protocol_message_t infer_protocol(const char* buf, size_t
     inferred_message.protocol = kProtocolHTTP;
   } else if ((inferred_message.type = infer_cql_message(buf, count)) != kUnknown) {
     inferred_message.protocol = kProtocolCQL;
+  } else if ((inferred_message.type = infer_mongo_message(buf, count)) != kUnknown) {
+    inferred_message.protocol = kProtocolMongo;
   } else if ((inferred_message.type = infer_pgsql_message(buf, count)) != kUnknown) {
     inferred_message.protocol = kProtocolPGSQL;
   } else if ((inferred_message.type = infer_mysql_message(buf, count, conn_info)) != kUnknown) {
     inferred_message.protocol = kProtocolMySQL;
+  } else if ((inferred_message.type = infer_kafka_message(buf, count, conn_info)) != kUnknown) {
+    inferred_message.protocol = kProtocolKafka;
   } else if ((inferred_message.type = infer_dns_message(buf, count)) != kUnknown) {
     inferred_message.protocol = kProtocolDNS;
   } else if (is_redis_message(buf, count)) {

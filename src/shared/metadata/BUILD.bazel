@@ -97,6 +97,15 @@ pl_cc_test(
 )
 
 pl_cc_test(
+    name = "cgroup_path_resolver_test",
+    srcs = ["cgroup_path_resolver_test.cc"],
+    data = glob(["testdata/**/*"]),
+    deps = [
+        ":cc_library",
+    ],
+)
+
+pl_cc_test(
     name = "metadata_state_test",
     srcs = ["metadata_state_test.cc"],
     deps = [

@@ -66,11 +66,10 @@ static constexpr DataElement kProcessStatsElements[] = {
 constexpr DataTableSchema kProcessStatsTable(
     "process_stats",
     "CPU, memory and IO stats for all K8s processes in your cluster.",
-    kProcessStatsElements,
-    std::chrono::milliseconds{1000},
-    std::chrono::milliseconds{1000}
+    kProcessStatsElements
 );
 // clang-format on
+DEFINE_PRINT_TABLE(ProcessStats)
 
 // TODO(oazizi): Enable version below, once rest of the agent supports tabletization.
 //               Can't enable yet because it would result in time-scrambling.

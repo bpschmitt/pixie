@@ -63,19 +63,22 @@ func testMain(m *testing.M) error {
 
 func mustLoadTestData(db *sqlx.DB) {
 	// Cleanup.
+	db.MustExec(`DELETE FROM user_attributes`)
 	db.MustExec(`DELETE FROM user_settings`)
 	db.MustExec(`DELETE FROM users`)
 	db.MustExec(`DELETE FROM orgs`)
 
 	insertOrgQuery := `INSERT INTO orgs (id, org_name, domain_name, enable_approvals) VALUES ($1, $2, $3, $4)`
 	db.MustExec(insertOrgQuery, "123e4567-e89b-12d3-a456-426655440000", "my-org", "my-org.com", "false")
-	insertUserQuery := `INSERT INTO users (id, org_id, username, first_name, last_name, email, is_approved) VALUES ($1, $2, $3, $4, $5, $6, $7)`
-	db.MustExec(insertUserQuery, "123e4567-e89b-12d3-a456-426655440001", "123e4567-e89b-12d3-a456-426655440000", "person@my-org.com", "first", "last", "person@my-org.com", "true")
-	db.MustExec(insertUserQuery, "123e4567-e89b-12d3-a456-426655440002", "123e4567-e89b-12d3-a456-426655440000", "person2@my-org.com", "first2", "last2", "person2@my-org.com", "false")
+	insertUserQuery := `INSERT INTO users (id, org_id, username, first_name, last_name, email, is_approved, identity_provider, auth_provider_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	db.MustExec(insertUserQuery, "123e4567-e89b-12d3-a456-426655440001", "123e4567-e89b-12d3-a456-426655440000", "person@my-org.com", "first", "last", "person@my-org.com", "true", "github", "github|123456789")
+	db.MustExec(insertUserQuery, "123e4567-e89b-12d3-a456-426655440002", "123e4567-e89b-12d3-a456-426655440000", "person2@my-org.com", "first2", "last2", "person2@my-org.com", "false", "google-oauth2", "google-oauth2|123456789")
 
-	insertUserSetting := `INSERT INTO user_settings (user_id, key, value) VALUES ($1, $2, $3)`
-	db.MustExec(insertUserSetting, "123e4567-e89b-12d3-a456-426655440001", "some_setting", "test")
-	db.MustExec(insertUserSetting, "123e4567-e89b-12d3-a456-426655440001", "another_setting", "true")
+	insertUserSetting := `INSERT INTO user_settings (user_id, analytics_optout) VALUES ($1, $2)`
+	db.MustExec(insertUserSetting, "123e4567-e89b-12d3-a456-426655440001", false)
+
+	insertUserAttr := `INSERT INTO user_attributes (user_id, tour_seen) VALUES ($1, $2)`
+	db.MustExec(insertUserAttr, "123e4567-e89b-12d3-a456-426655440001", false)
 }
 
 func TestDatastore(t *testing.T) {
@@ -83,11 +86,12 @@ func TestDatastore(t *testing.T) {
 		mustLoadTestData(db)
 		d := datastore.NewDatastore(db)
 		userInfo := datastore.UserInfo{
-			OrgID:     uuid.FromStringOrNil("123e4567-e89b-12d3-a456-426655440000"),
-			Username:  "zain",
-			FirstName: "zain",
-			LastName:  "asgar",
-			Email:     "zasgar@pixielabs.ai",
+			OrgID:          uuid.FromStringOrNil("123e4567-e89b-12d3-a456-426655440000"),
+			Username:       "zain",
+			FirstName:      "zain",
+			LastName:       "asgar",
+			Email:          "zasgar@pixielabs.ai",
+			AuthProviderID: "github|abcdefg",
 		}
 		userID, err := d.CreateUser(&userInfo)
 		require.NoError(t, err)
@@ -103,6 +107,18 @@ func TestDatastore(t *testing.T) {
 		assert.Equal(t, userInfo.FirstName, userInfoFetched.FirstName)
 		assert.Equal(t, userInfo.LastName, userInfoFetched.LastName)
 		assert.Equal(t, userInfo.Email, userInfoFetched.Email)
+		assert.Equal(t, userInfo.AuthProviderID, userInfoFetched.AuthProviderID)
+
+		// Check value in DB.
+		query := `SELECT * from user_attributes WHERE user_id=$1`
+		rows, err := db.Queryx(query, userID)
+		require.NoError(t, err)
+		defer rows.Close()
+		var userAttrs datastore.UserAttributes
+		assert.True(t, rows.Next())
+		err = rows.StructScan(&userAttrs)
+		require.NoError(t, err)
+		assert.Equal(t, false, *userAttrs.TourSeen)
 	})
 
 	t.Run("inserting existing user should fail", func(t *testing.T) {
@@ -188,10 +204,11 @@ func TestDatastore(t *testing.T) {
 			DomainName: "pg.com",
 		}
 		userInfo := datastore.UserInfo{
-			Username:  "johnd",
-			FirstName: "john",
-			LastName:  "doe",
-			Email:     "john@pg.com",
+			Username:       "johnd",
+			FirstName:      "john",
+			LastName:       "doe",
+			Email:          "john@pg.com",
+			AuthProviderID: "github|abcdefg",
 		}
 
 		orgID, userID, err := d.CreateUserAndOrg(&orgInfo, &userInfo)
@@ -202,6 +219,31 @@ func TestDatastore(t *testing.T) {
 		assert.Equal(t, orgInfo.ID, orgID)
 		assert.Equal(t, userInfo.ID, userID)
 		assert.Equal(t, userInfo.OrgID, orgID)
+		userInfoFetched, err := d.GetUser(userID)
+		require.NoError(t, err)
+		assert.Equal(t, userInfo.AuthProviderID, userInfoFetched.AuthProviderID)
+
+		// Check value in DB.
+		query := `SELECT * from user_attributes WHERE user_id=$1`
+		rows, err := db.Queryx(query, userID)
+		require.NoError(t, err)
+		defer rows.Close()
+		var userAttrs datastore.UserAttributes
+		assert.True(t, rows.Next())
+		err = rows.StructScan(&userAttrs)
+		require.NoError(t, err)
+		assert.Equal(t, false, *userAttrs.TourSeen)
+
+		// Check value in DB.
+		query = `SELECT * from user_settings WHERE user_id=$1`
+		rows, err = db.Queryx(query, userID)
+		require.NoError(t, err)
+		defer rows.Close()
+		var userSettings datastore.UserSettings
+		assert.True(t, rows.Next())
+		err = rows.StructScan(&userSettings)
+		require.NoError(t, err)
+		assert.Equal(t, false, *userSettings.AnalyticsOptout)
 	})
 
 	t.Run("create org and user first time user case should fail for existing org", func(t *testing.T) {
@@ -263,6 +305,25 @@ func TestDatastore(t *testing.T) {
 		require.Nil(t, userInfo)
 	})
 
+	t.Run("get user by auth provider id", func(t *testing.T) {
+		mustLoadTestData(db)
+		d := datastore.NewDatastore(db)
+		userInfo, err := d.GetUserByAuthProviderID("github|123456789")
+		require.NoError(t, err)
+		require.NotNil(t, userInfo)
+
+		assert.Equal(t, userInfo.Email, "person@my-org.com")
+	})
+
+	t.Run("get user by auth provider id for missing auth provider id should return specific error", func(t *testing.T) {
+		mustLoadTestData(db)
+		d := datastore.NewDatastore(db)
+		userInfo, err := d.GetUserByAuthProviderID("noid")
+		require.NotNil(t, err)
+		require.Equal(t, err, datastore.ErrUserNotFound)
+		require.Nil(t, userInfo)
+	})
+
 	t.Run("delete org and its users", func(t *testing.T) {
 		mustLoadTestData(db)
 		orgID := "223e4567-e89b-12d3-a456-426655440009"
@@ -271,8 +332,8 @@ func TestDatastore(t *testing.T) {
 		// Add in data to be deleted
 		insertOrgQuery := `INSERT INTO orgs (id, org_name, domain_name) VALUES ($1, $2, $3)`
 		db.MustExec(insertOrgQuery, orgID, "not-my-org", "not-my-org.com")
-		insertUserQuery := `INSERT INTO users (id, org_id, username, first_name, last_name, email) VALUES ($1, $2, $3, $4, $5, $6)`
-		db.MustExec(insertUserQuery, userID, orgID, "person@not-my-org.com", "first", "last", "person@not-my-org.com")
+		insertUserQuery := `INSERT INTO users (id, org_id, username, first_name, last_name, email, identity_provider) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		db.MustExec(insertUserQuery, userID, orgID, "person@not-my-org.com", "first", "last", "person@not-my-org.com", "github")
 
 		d := datastore.NewDatastore(db)
 
@@ -313,44 +374,72 @@ func TestDatastore(t *testing.T) {
 		assert.Equal(t, false, userInfoFetched.IsApproved)
 	})
 
-	t.Run("Get user settings", func(t *testing.T) {
+	t.Run("Get user attributes", func(t *testing.T) {
 		mustLoadTestData(db)
 		d := datastore.NewDatastore(db)
 
-		userSettingsFetched, err := d.GetUserSettings(uuid.FromStringOrNil("123e4567-e89b-12d3-a456-426655440001"), []string{"another_setting", "doesnt_exist", "some_setting"})
+		attrs, err := d.GetUserAttributes(uuid.FromStringOrNil("123e4567-e89b-12d3-a456-426655440001"))
 		require.NoError(t, err)
-		assert.Equal(t, []string{"true", "", "test"}, userSettingsFetched)
+		assert.NotNil(t, attrs.TourSeen)
+		assert.Equal(t, false, *attrs.TourSeen)
 	})
 
-	t.Run("Update user settings", func(t *testing.T) {
+	t.Run("Set user attributes", func(t *testing.T) {
 		mustLoadTestData(db)
 		d := datastore.NewDatastore(db)
 
 		id := "123e4567-e89b-12d3-a456-426655440001"
-		err := d.UpdateUserSettings(uuid.FromStringOrNil(id), []string{"new_setting", "another_setting"}, []string{"some_val", "new_value"})
+		tourSeen := true
+		err := d.SetUserAttributes(&datastore.UserAttributes{
+			UserID:   uuid.FromStringOrNil(id),
+			TourSeen: &tourSeen,
+		})
 		require.NoError(t, err)
 
-		checkKVInDB := func(k, v string) {
-			query := `SELECT * from user_settings WHERE user_id=$1 AND key=$2`
-			rows, err := db.Queryx(query, id, k)
-			require.NoError(t, err)
-			defer rows.Close()
-			var userSetting datastore.UserSetting
-			assert.True(t, rows.Next())
-			err = rows.StructScan(&userSetting)
-			require.NoError(t, err)
-			assert.Equal(t, v, userSetting.Value)
-		}
+		// Check value in DB.
+		query := `SELECT * from user_attributes WHERE user_id=$1`
+		rows, err := db.Queryx(query, id)
+		require.NoError(t, err)
+		defer rows.Close()
+		var userAttrs datastore.UserAttributes
+		assert.True(t, rows.Next())
+		err = rows.StructScan(&userAttrs)
+		require.NoError(t, err)
+		assert.Equal(t, true, *userAttrs.TourSeen)
+	})
 
-		expectedKeyValues := map[string]string{
-			"new_setting":     "some_val",
-			"another_setting": "new_value",
-			"some_setting":    "test",
-		}
+	t.Run("Get user settings", func(t *testing.T) {
+		mustLoadTestData(db)
+		d := datastore.NewDatastore(db)
 
-		for k, v := range expectedKeyValues {
-			checkKVInDB(k, v)
-		}
+		attrs, err := d.GetUserSettings(uuid.FromStringOrNil("123e4567-e89b-12d3-a456-426655440001"))
+		require.NoError(t, err)
+		assert.NotNil(t, attrs.AnalyticsOptout)
+		assert.Equal(t, false, *attrs.AnalyticsOptout)
+	})
+
+	t.Run("Set user settings", func(t *testing.T) {
+		mustLoadTestData(db)
+		d := datastore.NewDatastore(db)
+
+		id := "123e4567-e89b-12d3-a456-426655440001"
+		analyticsOptout := true
+		err := d.UpdateUserSettings(&datastore.UserSettings{
+			UserID:          uuid.FromStringOrNil(id),
+			AnalyticsOptout: &analyticsOptout,
+		})
+		require.NoError(t, err)
+
+		// Check value in DB.
+		query := `SELECT * from user_settings WHERE user_id=$1`
+		rows, err := db.Queryx(query, id)
+		require.NoError(t, err)
+		defer rows.Close()
+		var userSettings datastore.UserSettings
+		assert.True(t, rows.Next())
+		err = rows.StructScan(&userSettings)
+		require.NoError(t, err)
+		assert.Equal(t, true, *userSettings.AnalyticsOptout)
 	})
 
 	t.Run("Get users in org", func(t *testing.T) {

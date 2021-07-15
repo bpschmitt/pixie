@@ -1,7 +1,12 @@
 {
 	"folders": [
 		{
+			"name": "pixielabs",
 			"path": ".."
+		},
+		{
+			"name": "@pixielabs/ui",
+			"path": "../src/ui"
 		}
 	],
 	"settings": {
@@ -9,6 +14,7 @@
 		"bazel.buildifierFixOnFormat": true,
 		"bazel.enableCodeLens": true,
 		"bazel.queriesShareServer": true,
+		"editor.tabSize": 2,
 		"files.associations": {
 			".arclint": "json",
 			".arcconfig": "json",
@@ -26,6 +32,7 @@
 		"go.toolsEnvVars": {
 			"CGO_ENABLED": 0
 		},
+		"go.toolsManagement.autoUpdate": true,
 		"gopls": {
 			"build.allowModfileModifications": true,
 			"build.directoryFilters": [
@@ -35,7 +42,11 @@
 			"ui.completion.usePlaceholders": true,
 		},
 		"search.exclude": {
-			"**/dist": true
+			"**/dist": true,
+			"**/.yarn": true,
+			"**/.pnp.*": true,
 		},
+		"typescript.tsdk": "src/ui/.yarn/sdks/typescript/lib",
+  	"typescript.enablePromptUseWorkspaceTsdk": true
 	}
 }

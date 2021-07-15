@@ -16,10 +16,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GQLClusterStatus as ClusterStatus, GQLClusterInfo as Cluster } from '@pixie-labs/api';
+import { GQLClusterStatus as ClusterStatus, GQLClusterInfo as Cluster } from 'app/types/schema';
 
-// Selects based on cluster status and tiebreaks by cluster name.
-export function selectCluster(clusters: Cluster[]): Cluster {
+// Selects a default clusterName based on the status.
+export function selectClusterName(clusters: Pick<Cluster, 'clusterName' | 'status'>[]): string {
   if (clusters.length === 0) {
     return null;
   }
@@ -48,5 +48,5 @@ export function selectCluster(clusters: Cluster[]): Cluster {
       return 1;
     }
     return cluster1.clusterName < cluster2.clusterName ? -1 : 1;
-  })[0];
+  })[0]?.clusterName;
 }

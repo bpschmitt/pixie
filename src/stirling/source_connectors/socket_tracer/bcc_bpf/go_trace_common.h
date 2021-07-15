@@ -26,6 +26,7 @@
 #pragma once
 
 #include "src/stirling/bpf_tools/bcc_bpf_intf/go_types.h"
+#include "src/stirling/source_connectors/socket_tracer/bcc_bpf/macros.h"
 #include "src/stirling/source_connectors/socket_tracer/bcc_bpf_intf/symaddrs.h"
 
 // A map that communicates the location of symbols within a binary.
@@ -38,8 +39,6 @@ BPF_HASH(go_common_symaddrs_map, uint32_t, struct go_common_symaddrs_t);
 //-----------------------------------------------------------------------------
 // FD extraction functions
 //-----------------------------------------------------------------------------
-
-const int32_t kInvalidFD = -1;
 
 // This function accesses one of the following:
 //   conn.conn.conn.fd.pfd.Sysfd

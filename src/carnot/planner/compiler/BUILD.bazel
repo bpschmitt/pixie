@@ -35,6 +35,7 @@ pl_cc_library(
     deps = [
         "//src/carnot/funcs/builtins:cc_library",
         "//src/carnot/planner/ast:cc_library",
+        "//src/carnot/planner/compiler/analyzer:cc_library",
         "//src/carnot/planner/compiler/optimizer:cc_library",
         "//src/carnot/planner/compiler_error_context:cc_library",
         "//src/carnot/planner/compiler_state:cc_library",
@@ -87,14 +88,5 @@ pl_cc_test(
         ":test_utils",
         "//src/carnot/planpb:plan_testutils",
         "//src/carnot/udf_exporter:cc_library",
-    ],
-)
-
-pl_cc_test(
-    name = "analyzer_test",
-    srcs = ["analyzer_test.cc"],
-    deps = [
-        ":cc_library",
-        ":test_utils",
     ],
 )

@@ -16,7 +16,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { StatusGroup } from '@pixie-labs/components';
+import { StatusGroup } from 'app/components';
 import {
   makeStyles, Theme, withStyles,
 } from '@material-ui/core/styles';
@@ -110,7 +110,9 @@ export function containerStatusGroup(status: string): StatusGroup {
   }
 }
 
-export const AdminTooltip = ({ children, title }) => {
+export const AdminTooltip = ({
+  children, title,
+}: { children: React.ReactElement, title: string }): React.ReactElement => {
   const classes = tooltipStyles();
   return (
     <Tooltip title={title} placement='bottom' classes={classes}>
@@ -119,7 +121,7 @@ export const AdminTooltip = ({ children, title }) => {
   );
 };
 
-export const StyledTabs = withStyles((theme: Theme) => createStyles({
+export const StyledTabs = withStyles(() => createStyles({
   root: {
     flex: 1,
   },
@@ -193,6 +195,7 @@ export const StyledSmallRightTableCell = withStyles((theme: Theme) => createStyl
 export const LiveViewButton = withStyles((theme: Theme) => createStyles({
   root: {
     color: theme.palette.foreground.grey5,
+    height: theme.spacing(4),
   },
 }))(({ classes }: any) => (
   <Button classes={classes} component={Link} to='/live'>

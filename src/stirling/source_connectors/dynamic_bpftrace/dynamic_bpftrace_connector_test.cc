@@ -51,7 +51,7 @@ TEST(DynamicBPFTraceConnectorTest, Basic) {
                        DynamicBPFTraceConnector::Create("test", tracepoint));
 
   const int kTableNum = 0;
-  const DataTableSchema& table_schema = connector->TableSchema(kTableNum);
+  const DataTableSchema& table_schema = connector->table_schemas()[kTableNum];
 
   // Check the inferred table schema.
   {
@@ -83,8 +83,8 @@ TEST(DynamicBPFTraceConnectorTest, Basic) {
 
   // Read the data.
   StandaloneContext ctx;
-  DataTable data_table(table_schema);
-  connector->TransferData(&ctx, kTableNum, &data_table);
+  DataTable data_table(/*id*/ 0, table_schema);
+  connector->TransferData(&ctx, {&data_table});
   std::vector<TaggedRecordBatch> tablets = data_table.ConsumeRecords();
 
   // Should've gotten something in the records.
@@ -110,7 +110,7 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceBuiltins) {
                        DynamicBPFTraceConnector::Create("test", tracepoint));
 
   const int kTableNum = 0;
-  const DataTableSchema& table_schema = connector->TableSchema(kTableNum);
+  const DataTableSchema& table_schema = connector->table_schemas()[kTableNum];
 
   const int kPIDIdx = 0;
   const int kTIDIdx = 1;
@@ -164,8 +164,8 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceBuiltins) {
 
   // Read the data.
   StandaloneContext ctx;
-  DataTable data_table(table_schema);
-  connector->TransferData(&ctx, kTableNum, &data_table);
+  DataTable data_table(/*id*/ 0, table_schema);
+  connector->TransferData(&ctx, {&data_table});
   std::vector<TaggedRecordBatch> tablets = data_table.ConsumeRecords();
 
   // Should've gotten something in the records.
@@ -245,7 +245,7 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceBuiltins2) {
                        DynamicBPFTraceConnector::Create("test", tracepoint));
 
   const int kTableNum = 0;
-  const DataTableSchema& table_schema = connector->TableSchema(kTableNum);
+  const DataTableSchema& table_schema = connector->table_schemas()[kTableNum];
 
   const int kUsernameIdx = 0;
   const int kFTimeIdx = 1;
@@ -275,8 +275,8 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceBuiltins2) {
 
   // Read the data.
   StandaloneContext ctx;
-  DataTable data_table(table_schema);
-  connector->TransferData(&ctx, kTableNum, &data_table);
+  DataTable data_table(/*id*/ 0, table_schema);
+  connector->TransferData(&ctx, {&data_table});
   std::vector<TaggedRecordBatch> tablets = data_table.ConsumeRecords();
 
   // Should've gotten something in the records.
@@ -316,7 +316,7 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceUnlabeledColumn) {
                        DynamicBPFTraceConnector::Create("test", tracepoint));
 
   const int kTableNum = 0;
-  const DataTableSchema& table_schema = connector->TableSchema(kTableNum);
+  const DataTableSchema& table_schema = connector->table_schemas()[kTableNum];
 
   const int kUsernameIdx = 0;
   const int kFTimeIdx = 1;
@@ -346,8 +346,8 @@ TEST(DynamicBPFTraceConnectorTest, BPFTraceUnlabeledColumn) {
 
   // Read the data.
   StandaloneContext ctx;
-  DataTable data_table(table_schema);
-  connector->TransferData(&ctx, kTableNum, &data_table);
+  DataTable data_table(/*id*/ 0, table_schema);
+  connector->TransferData(&ctx, {&data_table});
   std::vector<TaggedRecordBatch> tablets = data_table.ConsumeRecords();
 
   // Should've gotten something in the records.

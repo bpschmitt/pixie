@@ -35,13 +35,14 @@ import (
 
 	"px.dev/pixie/src/api/proto/uuidpb"
 	"px.dev/pixie/src/cloud/profile/controller"
+	"px.dev/pixie/src/cloud/profile/controller/idmanager"
+	mock_idmanager "px.dev/pixie/src/cloud/profile/controller/idmanager/mock"
 	mock_controller "px.dev/pixie/src/cloud/profile/controller/mock"
 	"px.dev/pixie/src/cloud/profile/datastore"
 	"px.dev/pixie/src/cloud/profile/profileenv"
 	"px.dev/pixie/src/cloud/profile/profilepb"
 	"px.dev/pixie/src/cloud/project_manager/projectmanagerpb"
 	mock_projectmanager "px.dev/pixie/src/cloud/project_manager/projectmanagerpb/mock"
-	"px.dev/pixie/src/cloud/shared/idprovider/testutils"
 	"px.dev/pixie/src/shared/services/authcontext"
 	svcutils "px.dev/pixie/src/shared/services/utils"
 	"px.dev/pixie/src/utils"
@@ -70,11 +71,13 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "valid request",
 			makesCall: true,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo@bar.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "github",
+				AuthProviderID:   "github|abcdefg",
 			},
 			expectErr:       false,
 			expectCode:      codes.OK,
@@ -85,11 +88,13 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "invalid orgid",
 			makesCall: false,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     &uuidpb.UUID{},
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo@bar.com",
+				OrgID:            &uuidpb.UUID{},
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "github",
+				AuthProviderID:   "github|asdfghjkl;",
 			},
 			expectErr:       true,
 			expectCode:      codes.InvalidArgument,
@@ -100,11 +105,13 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "invalid username",
 			makesCall: false,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo@bar.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "github",
+				AuthProviderID:   "github|asdfghjkl;",
 			},
 			expectErr:       true,
 			expectCode:      codes.InvalidArgument,
@@ -115,11 +122,13 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "empty first name is ok",
 			makesCall: true,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "",
-				LastName:  "bar",
-				Email:     "foo@bar.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "github",
+				AuthProviderID:   "github|asdfghjkl;",
 			},
 			expectErr:       false,
 			expectCode:      codes.OK,
@@ -130,11 +139,12 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "empty email",
 			makesCall: false,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "",
+				IdentityProvider: "github",
 			},
 			expectErr:       true,
 			expectCode:      codes.InvalidArgument,
@@ -145,11 +155,12 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "banned email",
 			makesCall: false,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo@blocklist.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo@blocklist.com",
+				IdentityProvider: "github",
 			},
 			expectErr:       true,
 			expectCode:      codes.InvalidArgument,
@@ -160,11 +171,12 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "allowed email",
 			makesCall: true,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo@gmail.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo@gmail.com",
+				IdentityProvider: "github",
 			},
 			expectErr:       false,
 			expectCode:      codes.OK,
@@ -175,11 +187,12 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "invalid email",
 			makesCall: false,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "foo",
-				LastName:  "bar",
-				Email:     "foo.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "foo",
+				LastName:         "bar",
+				Email:            "foo.com",
+				IdentityProvider: "github",
 			},
 			expectErr:       true,
 			expectCode:      codes.InvalidArgument,
@@ -190,16 +203,33 @@ func TestServer_CreateUser(t *testing.T) {
 			name:      "enable approvals properly sets users info",
 			makesCall: true,
 			userInfo: &profilepb.CreateUserRequest{
-				OrgID:     utils.ProtoFromUUID(testOrgUUID),
-				Username:  "foobar",
-				FirstName: "",
-				LastName:  "bar",
-				Email:     "foo@bar.com",
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "github",
 			},
 			expectErr:       false,
 			expectCode:      codes.OK,
 			respID:          utils.ProtoFromUUID(testUUID),
 			enableApprovals: true,
+		},
+		{
+			name:      "identity provider empty throws an error",
+			makesCall: false,
+			userInfo: &profilepb.CreateUserRequest{
+				OrgID:            utils.ProtoFromUUID(testOrgUUID),
+				Username:         "foobar",
+				FirstName:        "",
+				LastName:         "bar",
+				Email:            "foo@bar.com",
+				IdentityProvider: "",
+			},
+			expectErr:       true,
+			expectCode:      codes.InvalidArgument,
+			respID:          nil,
+			enableApprovals: false,
 		},
 	}
 
@@ -215,12 +245,14 @@ func TestServer_CreateUser(t *testing.T) {
 			}
 			if tc.makesCall {
 				req := &datastore.UserInfo{
-					OrgID:      testOrgUUID,
-					Username:   tc.userInfo.Username,
-					FirstName:  tc.userInfo.FirstName,
-					LastName:   tc.userInfo.LastName,
-					Email:      tc.userInfo.Email,
-					IsApproved: !tc.enableApprovals,
+					OrgID:            testOrgUUID,
+					Username:         tc.userInfo.Username,
+					FirstName:        tc.userInfo.FirstName,
+					LastName:         tc.userInfo.LastName,
+					Email:            tc.userInfo.Email,
+					IsApproved:       !tc.enableApprovals,
+					IdentityProvider: tc.userInfo.IdentityProvider,
+					AuthProviderID:   tc.userInfo.AuthProviderID,
 				}
 				d.EXPECT().
 					CreateUser(req).
@@ -231,11 +263,11 @@ func TestServer_CreateUser(t *testing.T) {
 			if tc.expectErr {
 				assert.NotNil(t, err)
 				c := status.Code(err)
-				assert.Equal(t, c, tc.expectCode)
+				assert.Equal(t, tc.expectCode, c)
 				return
 			}
 
-			assert.Equal(t, resp, tc.respID)
+			assert.Equal(t, tc.respID, resp)
 		})
 	}
 }
@@ -251,12 +283,13 @@ func TestServer_GetUser(t *testing.T) {
 	s := controller.NewServer(nil, d, nil, nil)
 
 	mockReply := &datastore.UserInfo{
-		ID:        userUUID,
-		OrgID:     orgUUID,
-		Username:  "foobar",
-		FirstName: "foo",
-		LastName:  "bar",
-		Email:     "foo@bar.com",
+		ID:             userUUID,
+		OrgID:          orgUUID,
+		Username:       "foobar",
+		FirstName:      "foo",
+		LastName:       "bar",
+		Email:          "foo@bar.com",
+		AuthProviderID: "github|asdfghjkl;",
 	}
 
 	d.EXPECT().
@@ -272,6 +305,7 @@ func TestServer_GetUser(t *testing.T) {
 	assert.Equal(t, resp.FirstName, "foo")
 	assert.Equal(t, resp.LastName, "bar")
 	assert.Equal(t, resp.Email, "foo@bar.com")
+	assert.Equal(t, resp.AuthProviderID, "github|asdfghjkl;")
 }
 
 func TestServer_GetUser_MissingUser(t *testing.T) {
@@ -303,12 +337,14 @@ func TestServer_GetUserByEmail(t *testing.T) {
 	s := controller.NewServer(nil, d, nil, nil)
 
 	mockReply := &datastore.UserInfo{
-		ID:        userUUID,
-		OrgID:     orgUUID,
-		Username:  "foobar",
-		FirstName: "foo",
-		LastName:  "bar",
-		Email:     "foo@bar.com",
+		ID:               userUUID,
+		OrgID:            orgUUID,
+		Username:         "foobar",
+		FirstName:        "foo",
+		LastName:         "bar",
+		Email:            "foo@bar.com",
+		IdentityProvider: "github",
+		AuthProviderID:   "github|asdfghjkl;",
 	}
 
 	d.EXPECT().
@@ -323,6 +359,45 @@ func TestServer_GetUserByEmail(t *testing.T) {
 	assert.Equal(t, resp.ID, utils.ProtoFromUUID(userUUID))
 	assert.Equal(t, resp.Email, "foo@bar.com")
 	assert.Equal(t, resp.OrgID, utils.ProtoFromUUID(orgUUID))
+	assert.Equal(t, resp.IdentityProvider, "github")
+	assert.Equal(t, resp.AuthProviderID, "github|asdfghjkl;")
+}
+
+func TestServer_GetUserByAuthProviderID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	d := mock_controller.NewMockDatastore(ctrl)
+
+	userUUID := uuid.Must(uuid.NewV4())
+	orgUUID := uuid.Must(uuid.NewV4())
+	s := controller.NewServer(nil, d, nil, nil)
+
+	mockReply := &datastore.UserInfo{
+		ID:               userUUID,
+		OrgID:            orgUUID,
+		Username:         "foobar",
+		FirstName:        "foo",
+		LastName:         "bar",
+		Email:            "foo@bar.com",
+		IdentityProvider: "github",
+		AuthProviderID:   "github|asdfghjkl;",
+	}
+
+	d.EXPECT().
+		GetUserByAuthProviderID("github|asdfghjkl;").
+		Return(mockReply, nil)
+
+	resp, err := s.GetUserByAuthProviderID(
+		context.Background(),
+		&profilepb.GetUserByAuthProviderIDRequest{AuthProviderID: "github|asdfghjkl;"})
+
+	require.NoError(t, err)
+	assert.Equal(t, resp.ID, utils.ProtoFromUUID(userUUID))
+	assert.Equal(t, resp.Email, "foo@bar.com")
+	assert.Equal(t, resp.OrgID, utils.ProtoFromUUID(orgUUID))
+	assert.Equal(t, resp.IdentityProvider, "github")
+	assert.Equal(t, resp.AuthProviderID, "github|asdfghjkl;")
 }
 
 func TestServer_GetUserByEmail_MissingEmail(t *testing.T) {
@@ -367,10 +442,12 @@ func TestServer_CreateOrgAndUser_SuccessCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "foo@bar.com",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "foo@bar.com",
+					IdentityProvider: "github",
+					AuthProviderID:   "github|asdfghjkl;",
 				},
 			},
 			resp: &profilepb.CreateOrgAndUserResponse{
@@ -385,10 +462,12 @@ func TestServer_CreateOrgAndUser_SuccessCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "",
-					Email:     "foo@gmail.com",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "",
+					Email:            "foo@gmail.com",
+					IdentityProvider: "github",
+					AuthProviderID:   "github|asdfghjkl;",
 				},
 			},
 			resp: &profilepb.CreateOrgAndUserResponse{
@@ -414,11 +493,13 @@ func TestServer_CreateOrgAndUser_SuccessCases(t *testing.T) {
 
 			s := controller.NewServer(env, d, nil, nil)
 			exUserInfo := &datastore.UserInfo{
-				Username:   tc.req.User.Username,
-				FirstName:  tc.req.User.FirstName,
-				LastName:   tc.req.User.LastName,
-				Email:      tc.req.User.Email,
-				IsApproved: true,
+				Username:         tc.req.User.Username,
+				FirstName:        tc.req.User.FirstName,
+				LastName:         tc.req.User.LastName,
+				Email:            tc.req.User.Email,
+				IsApproved:       true,
+				IdentityProvider: tc.req.User.IdentityProvider,
+				AuthProviderID:   tc.req.User.AuthProviderID,
 			}
 			exOrg := &datastore.OrgInfo{
 				DomainName: tc.req.Org.DomainName,
@@ -452,10 +533,11 @@ func TestServer_CreateOrgAndUser_InvalidArgumentCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "foo@bar.com",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "foo@bar.com",
+					IdentityProvider: "github",
 				},
 			},
 		},
@@ -467,10 +549,11 @@ func TestServer_CreateOrgAndUser_InvalidArgumentCases(t *testing.T) {
 					DomainName: "",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "foo@bar.com",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "foo@bar.com",
+					IdentityProvider: "github",
 				},
 			},
 		},
@@ -482,10 +565,11 @@ func TestServer_CreateOrgAndUser_InvalidArgumentCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "foo@bar.com",
+					Username:         "",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "foo@bar.com",
+					IdentityProvider: "github",
 				},
 			},
 		},
@@ -497,10 +581,11 @@ func TestServer_CreateOrgAndUser_InvalidArgumentCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "",
+					IdentityProvider: "github",
 				},
 			},
 		},
@@ -512,10 +597,11 @@ func TestServer_CreateOrgAndUser_InvalidArgumentCases(t *testing.T) {
 					DomainName: "my-org.com",
 				},
 				User: &profilepb.CreateOrgAndUserRequest_User{
-					Username:  "foobar",
-					FirstName: "foo",
-					LastName:  "bar",
-					Email:     "foo@blocklist.com",
+					Username:         "foobar",
+					FirstName:        "foo",
+					LastName:         "bar",
+					Email:            "foo@blocklist.com",
+					IdentityProvider: "github",
 				},
 			},
 		},
@@ -560,20 +646,22 @@ func TestServer_CreateOrgAndUser_CreateProjectFailed(t *testing.T) {
 			DomainName: "my-org.com",
 		},
 		User: &profilepb.CreateOrgAndUserRequest_User{
-			Username:  "foobar",
-			FirstName: "foo",
-			LastName:  "bar",
-			Email:     "foo@bar.com",
+			Username:         "foobar",
+			FirstName:        "foo",
+			LastName:         "bar",
+			Email:            "foo@bar.com",
+			IdentityProvider: "github",
 		},
 	}
 
 	s := controller.NewServer(env, d, nil, nil)
 	exUserInfo := &datastore.UserInfo{
-		Username:   req.User.Username,
-		FirstName:  req.User.FirstName,
-		LastName:   req.User.LastName,
-		Email:      req.User.Email,
-		IsApproved: true,
+		Username:         req.User.Username,
+		FirstName:        req.User.FirstName,
+		LastName:         req.User.LastName,
+		Email:            req.User.Email,
+		IsApproved:       true,
+		IdentityProvider: "github",
 	}
 	exOrg := &datastore.OrgInfo{
 		DomainName: req.Org.DomainName,
@@ -1061,6 +1149,52 @@ func TestServer_UpdateOrg_RequestBlockedForUserOutsideOrg(t *testing.T) {
 	require.Regexp(t, "user does not have permission", err)
 }
 
+func TestServer_GetUserAttributes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	d := mock_controller.NewMockUserSettingsDatastore(ctrl)
+
+	s := controller.NewServer(nil, nil, d, nil)
+
+	userID := uuid.Must(uuid.NewV4())
+	tourSeen := true
+	d.EXPECT().
+		GetUserAttributes(userID).
+		Return(&datastore.UserAttributes{TourSeen: &tourSeen}, nil)
+
+	resp, err := s.GetUserAttributes(context.Background(), &profilepb.GetUserAttributesRequest{
+		ID: utils.ProtoFromUUID(userID),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, true, resp.TourSeen)
+}
+
+func TestServer_SetUserAttributes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	d := mock_controller.NewMockUserSettingsDatastore(ctrl)
+
+	s := controller.NewServer(nil, nil, d, nil)
+
+	userID := uuid.Must(uuid.NewV4())
+	tourSeen := true
+	d.EXPECT().
+		SetUserAttributes(&datastore.UserAttributes{
+			UserID:   userID,
+			TourSeen: &tourSeen,
+		}).
+		Return(nil)
+
+	resp, err := s.SetUserAttributes(context.Background(), &profilepb.SetUserAttributesRequest{
+		ID:       utils.ProtoFromUUID(userID),
+		TourSeen: &types.BoolValue{Value: true},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, &profilepb.SetUserAttributesResponse{}, resp)
+}
+
 func TestServer_GetUserSettings(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -1070,17 +1204,16 @@ func TestServer_GetUserSettings(t *testing.T) {
 	s := controller.NewServer(nil, nil, d, nil)
 
 	userID := uuid.Must(uuid.NewV4())
+	analyticsOptout := true
 	d.EXPECT().
-		GetUserSettings(userID, []string{"test", "another_key"}).
-		Return([]string{"a", "b"}, nil)
+		GetUserSettings(userID).
+		Return(&datastore.UserSettings{AnalyticsOptout: &analyticsOptout}, nil)
 
 	resp, err := s.GetUserSettings(context.Background(), &profilepb.GetUserSettingsRequest{
-		ID:   utils.ProtoFromUUID(userID),
-		Keys: []string{"test", "another_key"},
+		ID: utils.ProtoFromUUID(userID),
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"test", "another_key"}, resp.Keys)
-	assert.Equal(t, []string{"a", "b"}, resp.Values)
+	assert.Equal(t, true, resp.AnalyticsOptout)
 }
 
 func TestServer_UpdateUserSettings(t *testing.T) {
@@ -1092,58 +1225,22 @@ func TestServer_UpdateUserSettings(t *testing.T) {
 	s := controller.NewServer(nil, nil, d, nil)
 
 	userID := uuid.Must(uuid.NewV4())
+	analyticsOptout := true
+	d.EXPECT().
+		UpdateUserSettings(&datastore.UserSettings{
+			UserID:          userID,
+			AnalyticsOptout: &analyticsOptout,
+		}).
+		Return(nil)
 
-	tests := []struct {
-		name string
-
-		keys   []string
-		values []string
-
-		expectCall   bool
-		expectErr    bool
-		expectedCode codes.Code
-	}{
-		{
-			name:       "valid",
-			keys:       []string{"test1", "test2"},
-			values:     []string{"val1", "val2"},
-			expectCall: true,
-			expectErr:  false,
-		},
-		{
-			name:         "mismatched length",
-			keys:         []string{"test1", "test2"},
-			values:       []string{"val1"},
-			expectCall:   false,
-			expectErr:    true,
-			expectedCode: codes.InvalidArgument,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.expectCall {
-				d.EXPECT().
-					UpdateUserSettings(userID, tc.keys, tc.values).
-					Return(nil)
-			}
-
-			resp, err := s.UpdateUserSettings(context.Background(), &profilepb.UpdateUserSettingsRequest{
-				ID:     utils.ProtoFromUUID(userID),
-				Keys:   tc.keys,
-				Values: tc.values,
-			})
-			if tc.expectErr {
-				assert.NotNil(t, err)
-				assert.Equal(t, tc.expectedCode, status.Code(err))
-			} else {
-				require.NoError(t, err)
-				assert.NotNil(t, resp)
-				assert.Equal(t, true, resp.OK)
-			}
-		})
-	}
+	resp, err := s.UpdateUserSettings(context.Background(), &profilepb.UpdateUserSettingsRequest{
+		ID:              utils.ProtoFromUUID(userID),
+		AnalyticsOptout: &types.BoolValue{Value: true},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, &profilepb.UpdateUserSettingsResponse{}, resp)
 }
+
 func CreateTestContext() context.Context {
 	sCtx := authcontext.New()
 	sCtx.Claims = svcutils.GenerateJWTForUser(
@@ -1156,8 +1253,7 @@ func CreateTestContext() context.Context {
 	return authcontext.NewContext(context.Background(), sCtx)
 }
 
-// TODO(philkuz,PP-2668) Re-enable test when kratostest is less flakey.
-func DISABLEDTestServerInviteUser(t *testing.T) {
+func TestServerInviteUser(t *testing.T) {
 	userID := uuid.Must(uuid.NewV4())
 
 	orgID := uuid.FromStringOrNil("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -1211,33 +1307,36 @@ func DISABLEDTestServerInviteUser(t *testing.T) {
 
 			d := mock_controller.NewMockDatastore(ctrl)
 
-			kratos, err := testutils.NewKratosServer()
-			require.NoError(t, err)
-
-			defer kratos.CleanUp()
-
-			client, closeSrv, err := kratos.Serve()
-			require.NoError(t, err)
-			defer closeSrv()
-			assert.NotNil(t, client)
+			client := mock_idmanager.NewMockManager(ctrl)
 			s := controller.NewServer(nil, d, nil, client)
 
 			req := &profilepb.InviteUserRequest{
-				MustCreateUser: tc.mustCreate,
-				OrgID:          utils.ProtoFromUUID(orgID),
-				Email:          "bobloblaw@lawblog.com",
-				FirstName:      "Bob",
-				LastName:       "Loblaw",
+				MustCreateUser:   tc.mustCreate,
+				OrgID:            utils.ProtoFromUUID(orgID),
+				Email:            "bobloblaw@lawblog.com",
+				FirstName:        "Bob",
+				LastName:         "Loblaw",
+				IdentityProvider: "kratos",
 			}
 
 			userInfo := &datastore.UserInfo{
-				OrgID:      orgID,
-				Username:   req.Email,
-				FirstName:  req.FirstName,
-				LastName:   req.LastName,
-				Email:      req.Email,
-				IsApproved: !tc.EnableApprovals,
+				ID:               userID,
+				OrgID:            orgID,
+				Username:         req.Email,
+				FirstName:        req.FirstName,
+				LastName:         req.LastName,
+				Email:            req.Email,
+				IsApproved:       !tc.EnableApprovals,
+				IdentityProvider: "kratos",
 			}
+			client.EXPECT().
+				CreateIdentity(
+					gomock.Any(),
+					"bobloblaw@lawblog.com").
+				Return(&idmanager.CreateIdentityResponse{
+					IdentityProvider: "kratos",
+					AuthProviderID:   "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+				}, nil)
 
 			if !tc.doesUserExist {
 				d.EXPECT().
@@ -1250,7 +1349,16 @@ func DISABLEDTestServerInviteUser(t *testing.T) {
 					Return(nil, datastore.ErrUserNotFound)
 				// We always create a user if one does not exist.
 				d.EXPECT().
-					CreateUser(userInfo).
+					CreateUser(&datastore.UserInfo{
+						OrgID:            orgID,
+						Username:         req.Email,
+						FirstName:        req.FirstName,
+						LastName:         req.LastName,
+						Email:            req.Email,
+						IsApproved:       !tc.EnableApprovals,
+						IdentityProvider: "kratos",
+						AuthProviderID:   "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+					}).
 					Return(userID, nil)
 				d.EXPECT().
 					GetUser(userID).
@@ -1258,12 +1366,14 @@ func DISABLEDTestServerInviteUser(t *testing.T) {
 				d.EXPECT().
 					UpdateUser(
 						&datastore.UserInfo{
-							OrgID:      orgID,
-							Username:   req.Email,
-							FirstName:  req.FirstName,
-							LastName:   req.LastName,
-							Email:      req.Email,
-							IsApproved: true,
+							ID:               userID,
+							OrgID:            orgID,
+							Username:         req.Email,
+							FirstName:        req.FirstName,
+							LastName:         req.LastName,
+							Email:            req.Email,
+							IsApproved:       true,
+							IdentityProvider: "kratos",
 						}).
 					Return(nil)
 			} else {
@@ -1271,11 +1381,26 @@ func DISABLEDTestServerInviteUser(t *testing.T) {
 					GetUserByEmail("bobloblaw@lawblog.com").
 					Return(userInfo, nil)
 			}
+			if !tc.doesUserExist || !tc.mustCreate {
+				client.EXPECT().
+					SetPLMetadata(
+						"6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+						orgID.String(),
+						userID.String(),
+					).Return(nil)
+				client.EXPECT().
+					CreateInviteLinkForIdentity(
+						gomock.Any(),
+						&idmanager.CreateInviteLinkForIdentityRequest{AuthProviderID: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+					).Return(&idmanager.CreateInviteLinkForIdentityResponse{
+					InviteLink: "self-service/recovery/methods",
+				}, nil)
+			}
 
 			resp, err := s.InviteUser(ctx, req)
 
 			if tc.err == nil {
-				require.NoError(t, tc.err)
+				require.NoError(t, err)
 				assert.Equal(t, resp.Email, req.Email)
 				assert.Regexp(t, "self-service/recovery/methods", resp.InviteLink)
 			} else {
@@ -1301,13 +1426,15 @@ func TestServer_GetUsersInOrg(t *testing.T) {
 		GetUsersInOrg(orgID).
 		Return([]*datastore.UserInfo{
 			&datastore.UserInfo{
-				OrgID:      orgID,
-				Username:   "test@test.com",
-				FirstName:  "first",
-				LastName:   "last",
-				Email:      "test@test.com",
-				IsApproved: true,
-				ID:         userID,
+				OrgID:            orgID,
+				Username:         "test@test.com",
+				FirstName:        "first",
+				LastName:         "last",
+				Email:            "test@test.com",
+				IsApproved:       true,
+				ID:               userID,
+				IdentityProvider: "github",
+				AuthProviderID:   "github|asdfghjkl;",
 			},
 		}, nil)
 
@@ -1317,13 +1444,15 @@ func TestServer_GetUsersInOrg(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(resp.Users))
 	assert.Equal(t, &profilepb.UserInfo{
-		OrgID:      utils.ProtoFromUUID(orgID),
-		ID:         utils.ProtoFromUUID(userID),
-		Username:   "test@test.com",
-		FirstName:  "first",
-		LastName:   "last",
-		Email:      "test@test.com",
-		IsApproved: true,
+		OrgID:            utils.ProtoFromUUID(orgID),
+		ID:               utils.ProtoFromUUID(userID),
+		Username:         "test@test.com",
+		FirstName:        "first",
+		LastName:         "last",
+		Email:            "test@test.com",
+		IsApproved:       true,
+		IdentityProvider: "github",
+		AuthProviderID:   "github|asdfghjkl;",
 	}, resp.Users[0])
 
 	_, err = s.GetUsersInOrg(ctx, &profilepb.GetUsersInOrgRequest{

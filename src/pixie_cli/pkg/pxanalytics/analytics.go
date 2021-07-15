@@ -19,20 +19,17 @@
 package pxanalytics
 
 import (
+	"fmt"
+	"io"
+	"net/http"
 	"runtime"
 	"sync"
 
 	"github.com/gofrs/uuid"
+	"github.com/spf13/viper"
 	"gopkg.in/segmentio/analytics-go.v3"
 
 	version "px.dev/pixie/src/shared/goversion"
-)
-
-const (
-	// Analytics Key for Segment. Note: these are basically public keys since they are shipped with the CLI.
-	devAnalyticsKey = "DlP5FOZCLaPOukQN2FpkO0jdfxQrX13r"
-	// Prod key is for prod/staging binaries. We can't really identify the difference.
-	prodAnalyticsKey = "ehDrHWhR396KwcAQz0syA8YjwhwLXD1v"
 )
 
 var (
@@ -40,22 +37,51 @@ var (
 	once   sync.Once
 )
 
-func isDevVersion() bool {
-	return version.GetVersion().RevisionStatus() != "Distribution"
-}
+// A noop client to use if we don't have keys.
+type disabledAnalyticsClient struct{}
 
-func getSegmentKey() string {
-	if isDevVersion() {
-		return devAnalyticsKey
-	}
-	return prodAnalyticsKey
+func (c disabledAnalyticsClient) Enqueue(analytics.Message) error {
+	return nil
+}
+func (c disabledAnalyticsClient) Close() error {
+	return nil
 }
 
 // Client returns the default analytics client.
 func Client() analytics.Client {
 	once.Do(func() {
-		client, _ = analytics.NewWithConfig(getSegmentKey(), analytics.Config{
-			Endpoint: "https://segment.withpixie.ai",
+		client = disabledAnalyticsClient{}
+
+		if viper.GetBool("do_not_track") {
+			return
+		}
+
+		cloudAddr := viper.GetString("cloud_addr")
+		resp, err := http.Get(fmt.Sprintf("https://segment.%s/cli-write-key", cloudAddr))
+
+		var analyticsKey []byte
+
+		// TODO(vihang): Remove this once cloud proxy supports the `cli-write-key` path
+		// and we are past the revert window for cloud.
+		// This is to support a new cli talking to an older version of cloud.
+		if resp.StatusCode == 404 && cloudAddr == "withpixie.ai:443" {
+			analyticsKey = []byte("ehDrHWhR396KwcAQz0syA8YjwhwLXD1v")
+		}
+
+		if err == nil && resp.StatusCode == 200 {
+			analyticsKey, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return
+			}
+		}
+
+		if len(analyticsKey) == 0 {
+			return
+		}
+
+		client, _ = analytics.NewWithConfig(string(analyticsKey), analytics.Config{
+			Endpoint: fmt.Sprintf("https://segment.%s", cloudAddr),
 			DefaultContext: &analytics.Context{
 				App: analytics.AppInfo{
 					Name:    "PX CLI",
