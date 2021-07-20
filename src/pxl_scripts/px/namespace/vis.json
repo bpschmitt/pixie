@@ -76,6 +76,31 @@
       }
     },
     {
+      "name": "HTTP Status Codes by Service",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 3
+      },
+      "func": {
+        "name": "http_code_table",
+        "args": [
+          {
+            "name": "start_time",
+            "variable": "start_time"
+          },
+          {
+            "name": "namespace",
+            "variable": "namespace"
+          }
+        ]
+      },
+      "displaySpec": {
+        "@type": "types.px.dev/px.vispb.Table"
+      }
+    },
+    {
       "name": "Pod List",
       "position": {
         "x": 0,

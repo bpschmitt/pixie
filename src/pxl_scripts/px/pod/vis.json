@@ -398,6 +398,31 @@
       }
     },
     {
+      "name": "HTTP Status Codes by Pod",
+      "position": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 3
+      },
+      "func": {
+        "name": "http_code_table",
+        "args": [
+          {
+            "name": "start_time",
+            "variable": "start_time"
+          },
+          {
+            "name": "pod",
+            "variable": "pod"
+          }
+        ]
+      },
+      "displaySpec": {
+        "@type": "types.px.dev/px.vispb.Table"
+      }
+    },
+    {
       "name": "Pod Metadata",
       "func": {
         "name": "node",

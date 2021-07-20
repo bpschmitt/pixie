@@ -25,15 +25,119 @@ import px
 
 # Flag to filter out requests that come from an unresolvable IP.
 filter_unresolved_inbound = True
-# Flag to filter out health checks from the data.
-filter_health_checks = True
-# Flag to filter out ready checks from the data.
-filter_ready_checks = True
 ns_per_ms = 1000 * 1000
 ns_per_s = 1000 * ns_per_ms
 # Window size to use on time_ column for bucketing.
 window_ns = px.DurationNanos(10 * ns_per_s)
 
+# ----------------------------------------------------------------
+# Visualization Variables - No need to edit for basic configuration.
+# ----------------------------------------------------------------
+# K8s object is the abstraction to group on.
+# Options are ['pod', 'service'].
+k8s_object = 'service'
+# Flag to filter out requests that come from an unresolvable IP.
+filter_unresolved_inbound = True
+# Flag to filter out health checks from the data.
+filter_health_checks = True
+# Flag to filter out ready checks from the data.
+filter_ready_checks = True
+# Flag to filter out non_k8s_traffic from the data.
+filter_non_k8s_traffic = True
+###############################
+
+# ----------------------------------------------------------------
+# Utility functions:
+#
+# These are shared functions. We plan to support imports in v0.3,
+# which will allow these functions to be shared across multiple
+# scripts.
+# ----------------------------------------------------------------
+def make_http_table(start_time: str):
+    """ Makes the HTTP table given the passed in start.
+
+    The data necessary to compute HTTP level svc information is located in the
+    http_events table. We filter and aggregate data from this table to compute the
+    required metrics.
+
+    Args:
+    @start_time The timestamp of data to start at.
+
+    Returns: DataFrame of HTTP events with formatted columns.
+    """
+    df = px.DataFrame(table='http_events', start_time=start_time)
+    df = format_http_table(df, filter_health_checks,
+                           filter_ready_checks, filter_unresolved_inbound)
+    return df
+
+def format_http_table(df, filter_health_checks, filter_ready_checks,
+                      filter_unresolved_inbound):
+    """ Formats HTTP events tables
+
+    Runs events table universal formatting, adds a response_size,
+    creates a failure field marking which requests receive an error
+    status code, and optionally filters out system monitoring requests
+    and partial data points.
+
+    Args:
+    @df: the input http_events table.
+    @filter_health_checks: flag to filter health checks.
+    @filter_ready_checks: flag to filter health checks.
+    @filter_unresolved_inbound: flag to filter unresolved inbound
+        requests.
+
+    Returns: formatted HTTP events DataFrame.
+    """
+    df = format_events_table(df, 'latency')
+    df.resp_size = px.Bytes(px.length(df.resp_body))
+    df.failure = df.resp_status >= 400
+    df.pod = df.ctx['pod']
+    df.namespace = df.ctx['namespace']
+    df.svc = df.ctx['service']
+    filter_out_conds = ((df.req_path != '/health' or not filter_health_checks) and (
+        df.req_path != '/readyz' or not filter_ready_checks)) and (
+        df['remote_addr'] != '-' or not filter_unresolved_inbound)
+
+    df = df[filter_out_conds]
+    return df
+
+
+def format_events_table(df, latency_col):
+    """ Format data and add semantic columns in event tables
+
+    Unifies latency column to 'latency', adds a binned
+    timestamp field to aggregate on, and adds the svc
+    (k8s_object) as a semantic column.
+
+    Works on "mysql_events" and "http_events"
+
+    Args:
+    @df: the input events table
+    @latency_col: the name of the latency column in @df.
+
+    Returns: formatted events DataFrame
+    """
+    df.latency = df[latency_col]
+
+    df.timestamp = px.bin(df.time_, window_ns)
+    df[k8s_object] = df.ctx[k8s_object]
+    df = df[df[k8s_object] != '']
+    return df
+
+def http_code_table(start_time: str, namespace: px.Namespace):
+    """ Builds a table of HTTP status codes grouped by Service
+
+    Args:
+    @start_time The timestamp of data to start at.
+    @namespace: the name of the namespace.
+
+    Returns: 
+    DataFrame of the HTTP status code stats for inbound_service_let_summary
+    in the selected @namespace.
+    """
+    df = make_http_table(start_time)
+    matching_df = df[px.contains(df[k8s_object], namespace)]
+    return matching_df.groupby(['svc','resp_status']).agg(count=('latency', px.count))
 
 def pods_for_namespace(start_time: str, namespace: px.Namespace):
     ''' Gets a list of pods running per node.
