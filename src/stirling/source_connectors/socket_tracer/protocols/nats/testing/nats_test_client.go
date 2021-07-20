@@ -16,15 +16,50 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#pragma once
+package main
 
-#include "src/stirling/source_connectors/socket_tracer/conn_stats_table.h"
+import (
+	"flag"
+	"fmt"
+	"log"
+	"time"
 
-// PROTOCOL_LIST: Requires update on new protocols.
-#include "src/stirling/source_connectors/socket_tracer/cass_table.h"
-#include "src/stirling/source_connectors/socket_tracer/dns_table.h"
-#include "src/stirling/source_connectors/socket_tracer/http_table.h"
-#include "src/stirling/source_connectors/socket_tracer/mysql_table.h"
-#include "src/stirling/source_connectors/socket_tracer/nats_table.h"
-#include "src/stirling/source_connectors/socket_tracer/pgsql_table.h"
-#include "src/stirling/source_connectors/socket_tracer/redis_table.h"
+	"github.com/nats-io/nats.go"
+)
+
+func main() {
+	address := flag.String("address", "localhost:4222", "Server end point.")
+
+	flag.Parse()
+
+	nc, _ := nats.Connect(*address)
+
+	// Simple Sync Subscriber
+	sub, err := nc.SubscribeSync("foo")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = nc.Publish("foo", []byte("Hello World"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	m, err := sub.NextMsg(100 * time.Second)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Print(m)
+
+	err = sub.Unsubscribe()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = sub.Drain()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	nc.Close()
+}

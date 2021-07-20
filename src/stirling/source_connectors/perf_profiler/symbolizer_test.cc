@@ -27,104 +27,21 @@ namespace test {
 // foo() & bar() are not used directly, but in this test,
 // we will find their symbols using the device under test, the symbolizer.
 void foo() { LOG(INFO) << "foo()."; }
-
 void bar() { LOG(INFO) << "bar()."; }
 }  // namespace test
+
+const uintptr_t kFooAddr = reinterpret_cast<uintptr_t>(&test::foo);
+const uintptr_t kBarAddr = reinterpret_cast<uintptr_t>(&test::bar);
 
 namespace px {
 namespace stirling {
 
-using ::testing::Contains;
+using ::testing::AnyOfArray;
 
 class SymbolCacheTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    PL_CHECK_OK(bcc_.InitBPFProgram(kProgram));
-    bcc_symbolizer_ = std::make_unique<ebpf::BPFStackTable>(bcc_.GetStackTable("bcc_symbolizer"));
-  }
-
-  const std::string_view kProgram = "BPF_STACK_TRACE(bcc_symbolizer, 16);";
-  bpf_tools::BCCWrapper bcc_;
-  std::unique_ptr<ebpf::BPFStackTable> bcc_symbolizer_;
-
-  const uintptr_t kFooAddr = reinterpret_cast<uintptr_t>(&test::foo);
-  const uintptr_t kBarAddr = reinterpret_cast<uintptr_t>(&test::bar);
+  bpf_tools::BCCSymbolizer bcc_symbolizer_;
 };
-
-TEST_F(SymbolCacheTest, Lookup) {
-  SymbolCache sym_cache(getpid(), bcc_symbolizer_.get());
-
-  SymbolCache::LookupResult result;
-
-  result = sym_cache.Lookup(kFooAddr);
-  EXPECT_EQ(result.hit, false);
-  EXPECT_EQ(result.symbol, "test::foo()");
-
-  result = sym_cache.Lookup(kFooAddr);
-  EXPECT_EQ(result.hit, true);
-  EXPECT_EQ(result.symbol, "test::foo()");
-
-  result = sym_cache.Lookup(kBarAddr);
-  EXPECT_EQ(result.hit, false);
-  EXPECT_EQ(result.symbol, "test::bar()");
-}
-
-TEST_F(SymbolCacheTest, EvictOldEntries) {
-  SymbolCache sym_cache(getpid(), bcc_symbolizer_.get());
-
-  SymbolCache::LookupResult result;
-
-  EXPECT_EQ(sym_cache.total_entries(), 0);
-  EXPECT_EQ(sym_cache.active_entries(), 0);
-
-  result = sym_cache.Lookup(kFooAddr);
-  EXPECT_EQ(result.hit, false);
-  EXPECT_EQ(result.symbol, "test::foo()");
-
-  result = sym_cache.Lookup(kBarAddr);
-  EXPECT_EQ(result.hit, false);
-  EXPECT_EQ(result.symbol, "test::bar()");
-
-  EXPECT_EQ(sym_cache.total_entries(), 2);
-  EXPECT_EQ(sym_cache.active_entries(), 2);
-
-  sym_cache.CreateNewGeneration();
-
-  EXPECT_EQ(sym_cache.total_entries(), 2);
-  EXPECT_EQ(sym_cache.active_entries(), 0);
-
-  result = sym_cache.Lookup(kFooAddr);
-  EXPECT_EQ(result.hit, true);
-  EXPECT_EQ(result.symbol, "test::foo()");
-
-  EXPECT_EQ(sym_cache.total_entries(), 2);
-  EXPECT_EQ(sym_cache.active_entries(), 1);
-
-  sym_cache.CreateNewGeneration();
-
-  EXPECT_EQ(sym_cache.total_entries(), 1);
-  EXPECT_EQ(sym_cache.active_entries(), 0);
-
-  // Don't lookup test::foo() in this interval.
-  // Should cause it to get evicted from the cache after the next trigger.
-
-  sym_cache.CreateNewGeneration();
-
-  EXPECT_EQ(sym_cache.total_entries(), 0);
-  EXPECT_EQ(sym_cache.active_entries(), 0);
-
-  sym_cache.CreateNewGeneration();
-
-  EXPECT_EQ(sym_cache.total_entries(), 0);
-  EXPECT_EQ(sym_cache.active_entries(), 0);
-
-  result = sym_cache.Lookup(kFooAddr);
-  EXPECT_EQ(result.hit, false);
-  EXPECT_EQ(result.symbol, "test::foo()");
-
-  EXPECT_EQ(sym_cache.total_entries(), 1);
-  EXPECT_EQ(sym_cache.active_entries(), 1);
-}
 
 // Test the symbolizer with caching enabled and disabled.
 TEST(SymbolizerTest, Basic) {
@@ -163,27 +80,23 @@ TEST(SymbolizerTest, Basic) {
 
   FLAGS_stirling_profiler_symcache = true;
 
-  Symbolizer symbolizer;
-  ASSERT_OK(symbolizer.Init());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Symbolizer> symbolizer_uptr, BCCSymbolizer::Create());
+  BCCSymbolizer& symbolizer = *static_cast<BCCSymbolizer*>(symbolizer_uptr.get());
 
   const struct upid_t this_upid = {.pid = pid, .start_time_ticks = 0};
-
-  // Setup some address that we can symbolize:
-  const uintptr_t foo_addr = (uintptr_t) & ::test::foo;
-  const uintptr_t bar_addr = (uintptr_t) & ::test::bar;
 
   // Lookup the addresses for the first time. These should be cache misses.
   // We are placing each symbol lookup into its own scope to force us to
   // "re-lookup" the pid symbolizer function from inside of the symbolize instance.
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(foo_addr), "test::foo()");
+    EXPECT_EQ(symbolize(kFooAddr), "test::foo()");
     EXPECT_EQ(symbolizer.stat_accesses(), 1);
     EXPECT_EQ(symbolizer.stat_hits(), 0);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(bar_addr), "test::bar()");
+    EXPECT_EQ(symbolize(kBarAddr), "test::bar()");
     EXPECT_EQ(symbolizer.stat_accesses(), 2);
     EXPECT_EQ(symbolizer.stat_hits(), 0);
   }
@@ -191,14 +104,14 @@ TEST(SymbolizerTest, Basic) {
   // Lookup the addresses a second time. We should get cache hits.
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(foo_addr), "test::foo()");
+    EXPECT_EQ(symbolize(kFooAddr), "test::foo()");
     EXPECT_EQ(symbolizer.stat_accesses(), 3);
     EXPECT_EQ(symbolizer.stat_hits(), 1);
   }
 
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(bar_addr), "test::bar()");
+    EXPECT_EQ(symbolize(kBarAddr), "test::bar()");
     EXPECT_EQ(symbolizer.stat_accesses(), 4);
     EXPECT_EQ(symbolizer.stat_hits(), 2);
   }
@@ -214,55 +127,55 @@ TEST(SymbolizerTest, Basic) {
 
   {
     auto symbolize = symbolizer.GetSymbolizerFn(profiler::kKernelUPID);
-    EXPECT_THAT(possible_k_syms, Contains(std::string(symbolize(kaddr))));
+    EXPECT_THAT(std::string(symbolize(kaddr)), AnyOfArray(possible_k_syms));
     EXPECT_EQ(symbolizer.stat_accesses(), 5);
     EXPECT_EQ(symbolizer.stat_hits(), 2);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(profiler::kKernelUPID);
-    EXPECT_THAT(possible_k_syms, Contains(std::string(symbolize(kaddr))));
+    EXPECT_THAT(std::string(symbolize(kaddr)), AnyOfArray(possible_k_syms));
     EXPECT_EQ(symbolizer.stat_accesses(), 6);
     EXPECT_EQ(symbolizer.stat_hits(), 3);
   }
 
   // This will flush the caches, access count & hit count will remain the same.
   // We will lookup the symbols and again expect a miss then a hit.
-  symbolizer.FlushCache(this_upid);
-  symbolizer.FlushCache(profiler::kKernelUPID);
+  symbolizer.DeleteUPID(this_upid);
+  symbolizer.DeleteUPID(profiler::kKernelUPID);
 
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(foo_addr), "test::foo()");
+    EXPECT_EQ(symbolize(kFooAddr), "test::foo()");
     EXPECT_EQ(symbolizer.stat_accesses(), 7);
     EXPECT_EQ(symbolizer.stat_hits(), 3);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(bar_addr), "test::bar()");
+    EXPECT_EQ(symbolize(kBarAddr), "test::bar()");
     EXPECT_EQ(symbolizer.stat_accesses(), 8);
     EXPECT_EQ(symbolizer.stat_hits(), 3);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(profiler::kKernelUPID);
-    EXPECT_THAT(possible_k_syms, Contains(std::string(symbolize(kaddr))));
+    EXPECT_THAT(std::string(symbolize(kaddr)), AnyOfArray(possible_k_syms));
     EXPECT_EQ(symbolizer.stat_accesses(), 9);
     EXPECT_EQ(symbolizer.stat_hits(), 3);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(foo_addr), "test::foo()");
+    EXPECT_EQ(symbolize(kFooAddr), "test::foo()");
     EXPECT_EQ(symbolizer.stat_accesses(), 10);
     EXPECT_EQ(symbolizer.stat_hits(), 4);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(bar_addr), "test::bar()");
+    EXPECT_EQ(symbolize(kBarAddr), "test::bar()");
     EXPECT_EQ(symbolizer.stat_accesses(), 11);
     EXPECT_EQ(symbolizer.stat_hits(), 5);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(profiler::kKernelUPID);
-    EXPECT_THAT(possible_k_syms, Contains(std::string(symbolize(kaddr))));
+    EXPECT_THAT(std::string(symbolize(kaddr)), AnyOfArray(possible_k_syms));
     EXPECT_EQ(symbolizer.stat_accesses(), 12);
     EXPECT_EQ(symbolizer.stat_hits(), 6);
   }
@@ -272,19 +185,19 @@ TEST(SymbolizerTest, Basic) {
   FLAGS_stirling_profiler_symcache = false;
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(foo_addr), "test::foo()");
+    EXPECT_EQ(symbolize(kFooAddr), "test::foo()");
     EXPECT_EQ(symbolizer.stat_accesses(), 12);
     EXPECT_EQ(symbolizer.stat_hits(), 6);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(this_upid);
-    EXPECT_EQ(symbolize(bar_addr), "test::bar()");
+    EXPECT_EQ(symbolize(kBarAddr), "test::bar()");
     EXPECT_EQ(symbolizer.stat_accesses(), 12);
     EXPECT_EQ(symbolizer.stat_hits(), 6);
   }
   {
     auto symbolize = symbolizer.GetSymbolizerFn(profiler::kKernelUPID);
-    EXPECT_THAT(possible_k_syms, Contains(std::string(symbolize(kaddr))));
+    EXPECT_THAT(std::string(symbolize(kaddr)), AnyOfArray(possible_k_syms));
     EXPECT_EQ(symbolizer.stat_accesses(), 12);
     EXPECT_EQ(symbolizer.stat_hits(), 6);
   }
