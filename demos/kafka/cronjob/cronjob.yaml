@@ -1,0 +1,35 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: kafka-scale-up
+  namespace: px-kafka
+spec:
+  schedule: "0,20,40 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: sa-kafka-scaler
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c", "kubectl scale deployment/shipping -n px-kafka --replicas=3"]
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: kafka-scale-down
+  namespace: px-kafka
+spec:
+  schedule: "10,30,50 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: sa-kafka-scaler
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command: ["/bin/sh", "-c", "kubectl scale deployment/shipping -n px-kafka --replicas=1"]
+          restartPolicy: OnFailure
